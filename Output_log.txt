@@ -1,4 +1,4 @@
-===========================================XX Output 1 XX================================================
+===========================================XX Output 1 (Qwen/Qwen2.5-1.5B-Instruct) XX================================================
 [setup] Attaching LoRA adapters from: /content/drive/MyDrive/Model/grpo_cti_lora_adapters
 [setup] Loading tokenizer from: /content/drive/MyDrive/Model/grpo_cti_lora_adapters
 [setup] Adapter tokenizer unavailable (ValueError("Couldn't instantiate the backend tokenizer from one of: \n(1) a `tokenizers` library serialization file, \n(2) a slow tokenizer instance to convert or \n(3) an equivalent slow tokenizer class to instantiate and convert. \nYou need to have sentencepiece or tiktoken installed to convert a slow tokenizer to a fast one.")); falling back to base model tokenizer.
