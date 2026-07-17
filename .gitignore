@@ -1,0 +1,53 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.python-version
+
+# Jupyter
+.ipynb_checkpoints/
+
+# ML / model artifacts (large — prefer Git LFS or external storage)
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+grpo_cti_*.zip
+
+# Training outputs
+outputs/
+checkpoints/
+wandb/
+mlruns/
+.kaggle/
+
+# Secrets & environment
+.env
+.env.*
+*.pem
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+
+# knbase runtime (regenerated each session)
+.knbase/activity.log
+.knbase/session.json
+
+# Cursor local state (keep shared MCP config)
+.cursor/*
+!.cursor/mcp.json
+
+# File and folder to ignore
+grpo_cti_*.zip
+grpo_cti_lora_adapters/
+grpo_cti_tokenizers_model/
