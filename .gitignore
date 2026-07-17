@@ -50,4 +50,4 @@ mlruns/
 # File and folder to ignore
 grpo_cti_*.zip
 grpo_cti_lora_adapters/
-grpo_cti_tokenizers_model/
+grpo_cti_tokenizer_model/
