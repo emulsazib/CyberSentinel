@@ -1,0 +1,144 @@
+===========================================XX Output 1 XX================================================
+[setup] Attaching LoRA adapters from: /content/drive/MyDrive/Model/grpo_cti_lora_adapters
+[setup] Loading tokenizer from: /content/drive/MyDrive/Model/grpo_cti_lora_adapters
+[setup] Adapter tokenizer unavailable (ValueError("Couldn't instantiate the backend tokenizer from one of: \n(1) a `tokenizers` library serialization file, \n(2) a slow tokenizer instance to convert or \n(3) an equivalent slow tokenizer class to instantiate and convert. \nYou need to have sentencepiece or tiktoken installed to convert a slow tokenizer to a fast one.")); falling back to base model tokenizer.
+
+[eval] Running 5 probe samples (max_new_tokens=256, temperature=0.1)
+
+[eval] Generating response for sample 1/5...
+========================================================================
+ TEST CASE 1/5
+========================================================================
+Input Log:
+  Process 'cmd.exe' spawned 'powershell.exe -enc JABzAD0A...' and immediately executed a Base64-encoded download cradle.
+------------------------------------------------------------------------
+Ground Truth MITRE ID : T1059.001
+Extracted Answer      : (none)
+Format Adherence      : FAIL
+Accuracy              : FAIL
+Reasoning Word Count  : 0
+------------------------------------------------------------------------
+Extracted Reasoning:
+  (none — <reasoning> tags missing or empty)
+------------------------------------------------------------------------
+Raw Model Output:
+  The single most relevant MITRE ATT&CK technique is **T1234**.
+  
+  Here's my step-by-step reasoning:
+  
+  1. The process `cmd.exe` was spawned by another executable (`powershell.exe`).
+     - This suggests an initial command execution, which is common in many attack scenarios.
+  
+  2. Immediately after spawning `cmd.exe`, `powershell.exe` was invoked with an encoded argument `-enc JABzAD0A...`.
+     - Encoded arguments are often used to obfuscate commands or payloads, indicating that the attacker is trying to hide their intentions.
+  
+  3. The use of PowerShell for encoding further supports the idea of obfuscation or encryption, suggesting that the attacker is employing techniques to avoid detection.
+  
+  Given these observations, the most relevant MITRE ATT&CK technique is **T1234**, which represents "Obfuscation" or "Encryption".
+
+[eval] Generating response for sample 2/5...
+========================================================================
+ TEST CASE 2/5
+========================================================================
+Input Log:
+  The malware wrote a Run key under HKCU\Software\Microsoft\Windows\CurrentVersion\Run pointing to payload.exe so it starts at logon.
+------------------------------------------------------------------------
+Ground Truth MITRE ID : T1547.001
+Extracted Answer      : T1234.001
+Format Adherence      : PASS
+Accuracy              : FAIL
+Reasoning Word Count  : 33
+------------------------------------------------------------------------
+Extracted Reasoning:
+  The adversary is creating a registry entry that points to the payload, which is an indication of persistence. This action is part of the "Create/Modify Registry Entries" technique within the MITRE ATT&CK framework.
+------------------------------------------------------------------------
+Raw Model Output:
+  <reasoning>
+  The adversary is creating a registry entry that points to the payload, which is an indication of persistence. This action is part of the "Create/Modify Registry Entries" technique within the MITRE ATT&CK framework.
+  </reasoning>
+  <answer>T1234.001</answer>
+
+[eval] Generating response for sample 3/5...
+========================================================================
+ TEST CASE 3/5
+========================================================================
+Input Log:
+  The dropper stored its second-stage payload as XOR-encrypted blobs inside a PE resource section and only decrypted them in memory.
+------------------------------------------------------------------------
+Ground Truth MITRE ID : T1027
+Extracted Answer      : T1234.001
+Format Adherence      : PASS
+Accuracy              : FAIL
+Reasoning Word Count  : 34
+------------------------------------------------------------------------
+Extracted Reasoning:
+  The adversary encrypted the payload using XOR encryption before storing it, then decrypted it in memory to execute it. This is an example of obfuscation techniques used by adversaries to hide their malicious intent.
+------------------------------------------------------------------------
+Raw Model Output:
+  <reasoning>
+  The adversary encrypted the payload using XOR encryption before storing it, then decrypted it in memory to execute it. This is an example of obfuscation techniques used by adversaries to hide their malicious intent.
+  </reasoning>
+  <answer>T1234.001</answer>
+
+[eval] Generating response for sample 4/5...
+========================================================================
+ TEST CASE 4/5
+========================================================================
+Input Log:
+  After gaining a foothold, the implant allocated RWX memory in explorer.exe via VirtualAllocEx and injected shellcode with CreateRemoteThread.
+------------------------------------------------------------------------
+Ground Truth MITRE ID : T1055
+Extracted Answer      : (none)
+Format Adherence      : FAIL
+Accuracy              : FAIL
+Reasoning Word Count  : 0
+------------------------------------------------------------------------
+Extracted Reasoning:
+  (none — <reasoning> tags missing or empty)
+------------------------------------------------------------------------
+Raw Model Output:
+  The single most relevant MITRE ATT&CK technique is **T1234**.
+  
+  - **Reasoning:**
+    - The implant allocates RWX memory using `VirtualAllocEx`, which is an action that can be associated with the **Privilege Escalation** phase of the **Initial Access** tactic.
+    - Injecting shellcode into explorer.exe through `CreateRemoteThread` involves executing code on another process's address space, which is characteristic of the **Execution** phase within the **Lateral Movement** tactic.
+    
+  - **Answer:**
+    T1234
+
+[eval] Generating response for sample 5/5...
+========================================================================
+ TEST CASE 5/5
+========================================================================
+Input Log:
+  Beaconing was observed as periodic HTTPS POST requests to cdn-updates.example[.]com/api/v2/checkin with a custom User-Agent.
+------------------------------------------------------------------------
+Ground Truth MITRE ID : T1071.001
+Extracted Answer      : (none)
+Format Adherence      : FAIL
+Accuracy              : FAIL
+Reasoning Word Count  : 0
+------------------------------------------------------------------------
+Extracted Reasoning:
+  (none — <reasoning> tags missing or empty)
+------------------------------------------------------------------------
+Raw Model Output:
+  The single most relevant MITRE ATT&CK technique for this scenario is **T1043**.
+  
+  Reasoning:
+  - The beaconing behavior involves sending data over an HTTP/HTTPS connection, which aligns with the "Data Exfiltration" phase of the ATT&CK framework.
+  - The use of a custom User-Agent suggests that the attacker is attempting to mimic legitimate traffic patterns, further supporting the Data Exfiltration technique.
+  - The periodic nature of the POST requests indicates a patterned activity typical of beaconing techniques used by adversaries seeking to maintain persistence or evade detection mechanisms.
+  
+  Therefore, the correct MITRE ATT&CK ID for this scenario is **T1043**, which represents "Data Exfiltration".
+
+========================================================================
+ FINAL SUMMARY
+========================================================================
+  Samples evaluated     : 5
+  Format Adherence      : 2/5  (40.0%)
+  Accuracy              : 0/5  (0.0%)
+  Avg Reasoning Length  : 13.4 words
+========================================================================
+
+===========================================XX Output 2 XX================================================
