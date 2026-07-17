@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "updatedAt": "2026-07-17T13:36:06.489Z",
+  "files": {
+    "prd": {
+      "key": "prd",
+      "path": "memory-bank/prd.md",
+      "exists": true,
+      "checksum": "94af3844be891b8591bbcaab0d3bb844edec02d3557f5f5b3c06fb30119e47bb",
+      "bytes": 2225,
+      "summary": "GRPO-trained CTI agent maps threat intel snippets to MITRE ATT&CK technique IDs with explainable reasoning.",
+      "headings": [
+        "Problem",
+        "Goals",
+        "Users & Personas",
+        "Functional Requirements",
+        "Non-Goals",
+        "Success Metrics"
+      ],
+      "updatedAt": "2026-07-17T13:36:06.478Z"
+    },
+    "architecture": {
+      "key": "architecture",
+      "path": "memory-bank/architecture.md",
+      "exists": true,
+      "checksum": "87fea2ae3d9e84419efeec3be60226dc1c670c445cb8794fa26be0cf39e7dc39",
+      "bytes": 1862,
+      "summary": "Jupyter notebook + Unsloth/TRL GRPO pipeline; Qwen2.5-1.5B 4-bit base with LoRA; Security-TTP-Mapping dataset; exported adapter artifacts.",
+      "headings": [
+        "Overview",
+        "Components",
+        "Data Flow",
+        "Tech Stack",
+        "External Dependencies"
+      ],
+      "updatedAt": "2026-07-17T13:36:06.484Z"
+    },
+    "design": {
+      "key": "design",
+      "path": "memory-bank/design.md",
+      "exists": true,
+      "checksum": "028e301e6eb4bf665f3f7965a1833b1563d9160365e25211b6e609eb5fddceb0",
+      "bytes": 2160,
+      "summary": "Structured XML output contract; multi-reward GRPO scoring; conversational prompt format; label parsing for stringified Python lists.",
+      "headings": [
+        "Modules & Interfaces",
+        "Key Decisions",
+        "Data Models",
+        "Conventions",
+        "Open Questions"
+      ],
+      "updatedAt": "2026-07-17T13:36:06.485Z"
+    },
+    "phase": {
+      "key": "phase",
+      "path": "memory-bank/phase.md",
+      "exists": true,
+      "checksum": "50098868f06e51fe81bad85ed83748cb302a1b0f0f393cf35776cfed9a127f33",
+      "bytes": 1116,
+      "summary": "Initial GRPO training complete; LoRA + tokenizer artifacts exported; next: evaluation, inference demo, and model card.",
+      "headings": [
+        "Current Phase",
+        "Completed",
+        "In Progress",
+        "Next Up",
+        "Backlog"
+      ],
+      "updatedAt": "2026-07-17T13:36:06.486Z"
+    },
+    "rules": {
+      "key": "rules",
+      "path": "memory-bank/rules.md",
+      "exists": true,
+      "checksum": "dd3ae3227b41fb448476d7104fb154a4b0627427f82c70b51ee10ff3010213be",
+      "bytes": 1420,
+      "summary": "Notebook-first workflow; fp16 on T4; no FlashInfer on Kaggle; exact ATT&CK ID matching; do not commit large zip archives or secrets.",
+      "headings": [
+        "Must Do",
+        "Must Not Do",
+        "Coding Standards",
+        "Guardrails"
+      ],
+      "updatedAt": "2026-07-17T13:36:06.487Z"
+    },
+    "memory": {
+      "key": "memory",
+      "path": "memory-bank/memory.md",
+      "exists": true,
+      "checksum": "73f7afdff6b92bf1eb5e0cae63068ac4a5440fa2af264d783739f9b628a78f2f",
+      "bytes": 1409,
+      "summary": "CyberSentinel knbase initialized; GRPO CTI notebook and exported LoRA/tokenizer artifacts documented in governance.",
+      "headings": [
+        "Summary",
+        "Recent Changes",
+        "Learnings & Gotchas",
+        "Known Issues"
+      ],
+      "updatedAt": "2026-07-17T13:36:06.488Z"
+    }
+  }
+}

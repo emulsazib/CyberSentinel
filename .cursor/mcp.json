@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "knbase": {
+      "command": "/opt/homebrew/bin/npx",
+      "args": ["-y", "--package", "@vonneollc/knbase", "knbase-mcp"],
+      "env": { "KNBASE_ROOT": "/Users/emulsazib/Downloads/CyberSentinel" }
+    }
+  }
+}
