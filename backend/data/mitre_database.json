@@ -1,0 +1,340 @@
+{
+  "tactics": [
+    {
+      "id": "TA0043",
+      "name": "Reconnaissance",
+      "description": "The adversary is trying to gather information they can use to plan future operations."
+    },
+    {
+      "id": "TA0042",
+      "name": "Resource Development",
+      "description": "The adversary is trying to establish resources they can use to support operations."
+    },
+    {
+      "id": "TA0001",
+      "name": "Initial Access",
+      "description": "The adversary is trying to get into your network via entry vectors like phishing, exploit public-facing apps, or valid accounts."
+    },
+    {
+      "id": "TA0002",
+      "name": "Execution",
+      "description": "The adversary is trying to run malicious code via command interpreters, scripts, or APIs."
+    },
+    {
+      "id": "TA0003",
+      "name": "Persistence",
+      "description": "The adversary is trying to maintain their foothold across restarts and credential changes."
+    },
+    {
+      "id": "TA0004",
+      "name": "Privilege Escalation",
+      "description": "The adversary is trying to gain higher-level permissions like SYSTEM, root, or domain admin."
+    },
+    {
+      "id": "TA0005",
+      "name": "Defense Evasion",
+      "description": "The adversary is trying to avoid being detected by obfuscation, process injection, or disabling security tools."
+    },
+    {
+      "id": "TA0006",
+      "name": "Credential Access",
+      "description": "The adversary is trying to steal account names and passwords via dumping, sniffing, or keylogging."
+    },
+    {
+      "id": "TA0007",
+      "name": "Discovery",
+      "description": "The adversary is trying to figure out your environment, system info, network topology, and accounts."
+    },
+    {
+      "id": "TA0008",
+      "name": "Lateral Movement",
+      "description": "The adversary is trying to move through your environment using remote services, SMB, or SSH."
+    },
+    {
+      "id": "TA0009",
+      "name": "Collection",
+      "description": "The adversary is trying to gather data of interest like documents, emails, or keystrokes."
+    },
+    {
+      "id": "TA0011",
+      "name": "Command and Control",
+      "description": "The adversary is trying to communicate with compromised systems to control them."
+    },
+    {
+      "id": "TA0010",
+      "name": "Exfiltration",
+      "description": "The adversary is trying to steal data via encrypted channels, cloud storage, or alternate protocols."
+    },
+    {
+      "id": "TA0040",
+      "name": "Impact",
+      "description": "The adversary is trying to manipulate, interrupt, or destroy your systems and data (e.g. ransomware)."
+    }
+  ],
+  "techniques": {
+    "T1059": {
+      "id": "T1059",
+      "name": "Command and Scripting Interpreter",
+      "tactics": ["Execution"],
+      "description": "Adversaries may abuse command and script interpreters to execute commands, scripts, or binaries.",
+      "detection": "Monitor process execution logs, command line arguments, and parent-child process anomalies.",
+      "mitigations": ["Disable unnecessary scripting engines", "Enforce code signing policies", "Use application control like AppLocker / WDAC"]
+    },
+    "T1059.001": {
+      "id": "T1059.001",
+      "name": "PowerShell",
+      "tactics": ["Execution"],
+      "description": "Adversaries may abuse PowerShell commands and scripts for execution. PowerShell is a powerful interactive command-line interface and scripting environment.",
+      "detection": "Enable Script Block Logging (Event ID 4104), Module Logging (4103), and Transcription. Monitor for encoded command flags (-enc, -encodedcommand) and unconstrained download cradles.",
+      "mitigations": ["Enable PowerShell Constrained Language Mode", "Configure AppLocker to restrict script execution", "Monitor and alert on unusual encoded command executions"]
+    },
+    "T1059.003": {
+      "id": "T1059.003",
+      "name": "Windows Command Shell",
+      "tactics": ["Execution"],
+      "description": "Adversaries may abuse cmd.exe to execute commands or batch files.",
+      "detection": "Monitor process creation events (Event ID 4688 / Sysmon Event ID 1) for suspicious cmd.exe flags and pipe operations.",
+      "mitigations": ["Disable cmd.exe execution for unprivileged accounts where not needed", "Audit command lines"]
+    },
+    "T1059.005": {
+      "id": "T1059.005",
+      "name": "Visual Basic",
+      "tactics": ["Execution"],
+      "description": "Adversaries may abuse Visual Basic (VBScript / VBA) for execution via malicious Office documents or WScript/CScript.",
+      "detection": "Monitor Office applications spawning wscript.exe, cscript.exe, or powershell.exe.",
+      "mitigations": ["Block macros in Office files downloaded from the internet", "Enforce ASR rules"]
+    },
+    "T1547": {
+      "id": "T1547",
+      "name": "Boot or Logon Autostart Execution",
+      "tactics": ["Persistence", "Privilege Escalation"],
+      "description": "Adversaries may configure system settings to automatically execute a program during system boot or logon.",
+      "detection": "Monitor registry modifications to Run / RunOnce keys, Startup folder additions, and service installations.",
+      "mitigations": ["Restrict write access to autorun registry keys and startup folders", "Regularly audit startup entries with Sysinternals Autoruns"]
+    },
+    "T1547.001": {
+      "id": "T1547.001",
+      "name": "Registry Run Keys / Startup Folder",
+      "tactics": ["Persistence", "Privilege Escalation"],
+      "description": "Adversaries may achieve persistence by adding an entry to the 'Run' or 'RunOnce' keys in the Windows Registry or adding files to the Startup folder.",
+      "detection": "Monitor Sysmon Event 13 (Registry value set) targeting HKCU\\...\\CurrentVersion\\Run or HKLM\\...\\CurrentVersion\\Run.",
+      "mitigations": ["Restrict unprivileged user modification of system-level registry keys", "Use EDR auto-quarantine for unknown startup executables"]
+    },
+    "T1053": {
+      "id": "T1053",
+      "name": "Scheduled Task/Job",
+      "tactics": ["Execution", "Persistence", "Privilege Escalation"],
+      "description": "Adversaries may abuse task scheduling functionality to facilitate initial or recurring execution of malicious code.",
+      "detection": "Monitor schtasks.exe and at.exe process execution, Windows Security Event ID 4698 (A scheduled task was created).",
+      "mitigations": ["Limit task creation privileges", "Audit scheduled tasks on critical endpoints"]
+    },
+    "T1053.005": {
+      "id": "T1053.005",
+      "name": "Scheduled Task",
+      "tactics": ["Execution", "Persistence", "Privilege Escalation"],
+      "description": "Adversaries may use the Windows Task Scheduler to execute programs at system startup or on a scheduled basis for persistence.",
+      "detection": "Monitor TaskScheduler operational logs (Microsoft-Windows-TaskScheduler/Operational) and schtasks /create commands.",
+      "mitigations": ["Enforce least privilege on Task Scheduler", "Monitor XML task definitions under System32\\Tasks"]
+    },
+    "T1027": {
+      "id": "T1027",
+      "name": "Obfuscated Files or Information",
+      "tactics": ["Defense Evasion"],
+      "description": "Adversaries may attempt to make an executable or file difficult to discover or analyze by encrypting, encoding, compressing, or XOR-masking content.",
+      "detection": "Look for high Shannon entropy in file sections, encrypted resource payloads, and Base64/XOR decryption loops in memory.",
+      "mitigations": ["Deploy anti-malware with memory scanning and dynamic emulation capabilities", "Block unapproved packers"]
+    },
+    "T1027.002": {
+      "id": "T1027.002",
+      "name": "Software Packing",
+      "tactics": ["Defense Evasion"],
+      "description": "Adversaries may compress or encrypt executables with custom packers or protectors (e.g. UPX, Themida, VMProtect) to hinder signature-based detection.",
+      "detection": "Scan PE headers for abnormal section names and entropy signatures.",
+      "mitigations": ["Use file integrity monitoring and behavioral sandboxing"]
+    },
+    "T1055": {
+      "id": "T1055",
+      "name": "Process Injection",
+      "tactics": ["Defense Evasion", "Privilege Escalation"],
+      "description": "Adversaries may inject code into processes in order to evade process-based defenses as well as possibly elevate privileges.",
+      "detection": "Monitor API calls like VirtualAllocEx, WriteProcessMemory, and CreateRemoteThread via Sysmon Event 8 (CreateRemoteThread) or EDR API hooks.",
+      "mitigations": ["Enable Windows Defender Exploit Guard (Attack Surface Reduction)", "Utilize Endpoint Detection and Response (EDR) with kernel-level memory monitoring"]
+    },
+    "T1055.001": {
+      "id": "T1055.001",
+      "name": "Dynamic-link Library Injection",
+      "tactics": ["Defense Evasion", "Privilege Escalation"],
+      "description": "Adversaries may inject dynamic-link libraries (DLLs) into processes to evade defenses and execute arbitrary code.",
+      "detection": "Monitor LoadLibrary calls in suspicious processes and Sysmon Event 7 (Image loaded).",
+      "mitigations": ["Enforce signed DLL loading policies via AppLocker / WDAC"]
+    },
+    "T1055.012": {
+      "id": "T1055.012",
+      "name": "Process Hollowing",
+      "tactics": ["Defense Evasion", "Privilege Escalation"],
+      "description": "Adversaries may inject malicious code into suspended legitimate processes by unmapping memory and rewriting entrypoints.",
+      "detection": "Detect discrepancies between the PE file on disk and the loaded executable code in memory (NtUnmapViewOfSection).",
+      "mitigations": ["Deploy memory analysis tools like Volatility or modern EDR with memory integrity checks"]
+    },
+    "T1071": {
+      "id": "T1071",
+      "name": "Application Layer Protocol",
+      "tactics": ["Command and Control"],
+      "description": "Adversaries may communicate using application layer protocols (e.g., HTTP, HTTPS, DNS) to blend in with existing network traffic.",
+      "detection": "Analyze TLS/SSL certificates, HTTP User-Agent anomalies, request frequency (jitter/beaconing), and POST body sizes.",
+      "mitigations": ["Perform SSL/TLS inspection on web proxies", "Block known malicious domains and IP reputations"]
+    },
+    "T1071.001": {
+      "id": "T1071.001",
+      "name": "Web Protocols",
+      "tactics": ["Command and Control"],
+      "description": "Adversaries may communicate using application layer web protocols (HTTP, HTTPS, WebSockets) to blend with normal web traffic.",
+      "detection": "Detect periodic beaconing behaviors, rare user-agents, non-standard HTTP headers, or dynamic DNS domains.",
+      "mitigations": ["Enforce web proxies with SSL inspection", "Employ threat intel domain blocklists"]
+    },
+    "T1071.004": {
+      "id": "T1071.004",
+      "name": "DNS",
+      "tactics": ["Command and Control"],
+      "description": "Adversaries may communicate using the Domain Name System (DNS) protocol for command and control or data exfiltration (DNS tunneling).",
+      "detection": "Monitor high volumes of DNS queries with high entropy subdomains and non-standard record types (TXT, NULL).",
+      "mitigations": ["Filter external DNS traffic through internal recursive DNS resolvers with query logging and threat blocking"]
+    },
+    "T1003": {
+      "id": "T1003",
+      "name": "OS Credential Dumping",
+      "tactics": ["Credential Access"],
+      "description": "Adversaries may dump credentials from the operating system to obtain account login and credential material (e.g. LSASS memory, SAM database).",
+      "detection": "Monitor access to lsass.exe process memory (Sysmon Event 10), invocations of MiniDumpWriteDump, and volume shadow copy access.",
+      "mitigations": ["Enable Credential Guard in Windows 10/11 and Server", "Restrict debug privileges (SeDebugPrivilege)", "Enable LSA Protection (RunAsPPL)"]
+    },
+    "T1003.001": {
+      "id": "T1003.001",
+      "name": "LSASS Memory",
+      "tactics": ["Credential Access"],
+      "description": "Adversaries may attempt to access credential material stored in the process memory of the Local Security Authority Subsystem Service (LSASS).",
+      "detection": "Detect Mimikatz, procdump.exe, or comsvcs.dll dumping LSASS memory handles.",
+      "mitigations": ["Configure LSA Protection (RunAsPPL)", "Enable Windows Defender Credential Guard"]
+    },
+    "T1082": {
+      "id": "T1082",
+      "name": "System Information Discovery",
+      "tactics": ["Discovery"],
+      "description": "An adversary may attempt to get detailed information about the operating system and hardware, including version, patches, and architecture.",
+      "detection": "Monitor execution of systeminfo.exe, hostname, uname -a, and WMI queries for Win32_OperatingSystem.",
+      "mitigations": ["Restrict command execution for unprivileged accounts where possible", "Audit discovery command telemetry"]
+    },
+    "T1083": {
+      "id": "T1083",
+      "name": "File and Directory Discovery",
+      "tactics": ["Discovery"],
+      "description": "Adversaries may enumerate files and directories or search in specific locations of a host to identify sensitive data or system files.",
+      "detection": "Monitor dir, ls, findstr, or tree commands executed in rapid sequence by anomalous parent processes.",
+      "mitigations": ["Restrict access to sensitive file shares with proper ACLs", "Audit file system access"]
+    },
+    "T1046": {
+      "id": "T1046",
+      "name": "Network Service Discovery",
+      "tactics": ["Discovery"],
+      "description": "Adversaries may attempt to get a listing of services running on remote hosts or local network segments (port scanning).",
+      "detection": "Monitor rapid SYN/connect scans from single hosts across multiple internal IP subnets.",
+      "mitigations": ["Deploy internal network segmentation and firewalling", "Alert on anomalous port scans"]
+    },
+    "T1021": {
+      "id": "T1021",
+      "name": "Remote Services",
+      "tactics": ["Lateral Movement"],
+      "description": "Adversaries may use valid credentials to log into a service that is designed to accept remote connections (e.g. RDP, SMB, SSH, WinRM).",
+      "detection": "Monitor Windows Security Event ID 4624 (Logon Type 10 - RemoteInteractive or Type 3 - Network) and port 3389 / 445 / 5985 traffic.",
+      "mitigations": ["Enforce multi-factor authentication (MFA)", "Disable remote desktop or restrict RDP access via jump boxes"]
+    },
+    "T1021.001": {
+      "id": "T1021.001",
+      "name": "Remote Desktop Protocol",
+      "tactics": ["Lateral Movement"],
+      "description": "Adversaries may connect to remote systems via RDP to interact with user sessions and move laterally.",
+      "detection": "Monitor RDP connection events,mstsc.exe executions, and unexpected internal RDP sessions.",
+      "mitigations": ["Enforce Network Level Authentication (NLA)", "Use MFA for RDP access", "Restrict port 3389 via host firewalls"]
+    },
+    "T1021.002": {
+      "id": "T1021.002",
+      "name": "SMB/Windows Admin Shares",
+      "tactics": ["Lateral Movement"],
+      "description": "Adversaries may use SMB to interact with administrative shares (C$, ADMIN$, IPC$) for lateral movement.",
+      "detection": "Monitor Event ID 5140 (A network share object was accessed) and SMB PsExec-style service creation.",
+      "mitigations": ["Disable SMBv1", "Block inbound SMB port 445 between internal workstation subnets"]
+    },
+    "T1486": {
+      "id": "T1486",
+      "name": "Data Encrypted for Impact",
+      "tactics": ["Impact"],
+      "description": "Adversaries may encrypt data on target systems to interrupt the availability of system and network resources (Ransomware).",
+      "detection": "Detect rapid file modification/renaming rates, vssadmin delete shadows commands, and high I/O volume with new file extensions.",
+      "mitigations": ["Maintain immutable, offline backups", "Protect Volume Shadow Copies", "Deploy anti-ransomware behavioral blockers"]
+    },
+    "T1490": {
+      "id": "T1490",
+      "name": "Inhibit System Recovery",
+      "tactics": ["Impact"],
+      "description": "Adversaries may delete or remove built-in data recovery features, such as Volume Shadow Copies, backup catalogs, or system restore points.",
+      "detection": "Monitor execution of vssadmin.exe delete shadows, bcdedit /set {default} recoveryenabled No, and wbadmin.exe delete catalog.",
+      "mitigations": ["Restrict administrator execution of vssadmin and bcdedit commands", "Enforce EDR blocking on recovery disabling commands"]
+    },
+    "T1566": {
+      "id": "T1566",
+      "name": "Phishing",
+      "tactics": ["Initial Access"],
+      "description": "Adversaries may send phishing messages to gain access to victim systems via malicious attachments or links.",
+      "detection": "Analyze email gateway telemetry, anomalous SPF/DKIM/DMARC failures, and macro-enabled attachments.",
+      "mitigations": ["Deploy email security gateway (SEG) with attachment sandboxing", "Conduct regular security awareness training"]
+    },
+    "T1566.001": {
+      "id": "T1566.001",
+      "name": "Spearphishing Attachment",
+      "tactics": ["Initial Access"],
+      "description": "Adversaries may send targeted emails with malicious attachments (e.g. ISO, LNK, Office macros, ZIPs) to gain access.",
+      "detection": "Inspect inbound email attachments with deep file inspection and sandbox detonation.",
+      "mitigations": ["Block dangerous attachment extensions at email gateway (.iso, .vbs, .hta, .exe, .scr)"]
+    },
+    "T1190": {
+      "id": "T1190",
+      "name": "Exploit Public-Facing Application",
+      "tactics": ["Initial Access"],
+      "description": "Adversaries may attempt to exploit a vulnerability in an Internet-facing computer or program to gain access.",
+      "detection": "Monitor web server error logs (500s), WAF blocked requests, and suspicious child processes spawned by web server daemons (w3wp.exe, nginx, apache).",
+      "mitigations": ["Patch external systems promptly", "Deploy a Web Application Firewall (WAF)", "Isolate public-facing DMZ servers"]
+    },
+    "T1078": {
+      "id": "T1078",
+      "name": "Valid Accounts",
+      "tactics": ["Initial Access", "Persistence", "Privilege Escalation", "Defense Evasion"],
+      "description": "Adversaries may obtain and abuse credentials of existing accounts as a means of gaining Initial Access, Persistence, or Privilege Escalation.",
+      "detection": "Detect impossible travel logins, unusual login times, and access to resources outside normal job roles.",
+      "mitigations": ["Enforce multi-factor authentication (MFA)", "Implement conditional access policies and continuous access evaluation"]
+    },
+    "T1041": {
+      "id": "T1041",
+      "name": "Exfiltration Over C2 Channel",
+      "tactics": ["Exfiltration"],
+      "description": "Adversaries may steal data by exfiltrating it over an existing command and control channel.",
+      "detection": "Monitor spikes in outbound data transfer volumes during C2 sessions.",
+      "mitigations": ["Implement data loss prevention (DLP) and strict outbound network egress filtering"]
+    },
+    "T1567": {
+      "id": "T1567",
+      "name": "Exfiltration Over Web Service",
+      "tactics": ["Exfiltration"],
+      "description": "Adversaries may use legitimate external cloud storage or file-sharing services (e.g., Mega, Google Drive, OneDrive, Discord) to exfiltrate data.",
+      "detection": "Monitor outbound upload requests to cloud storage URLs from unexpected processes.",
+      "mitigations": ["Implement Cloud Access Security Broker (CASB)", "Block unapproved cloud file-sharing services"]
+    },
+    "T1056": {
+      "id": "T1056",
+      "name": "Input Capture",
+      "tactics": ["Collection", "Credential Access"],
+      "description": "Adversaries may use methods of capturing user input to obtain credentials or sensitive information (e.g. Keylogging, GUI input capture).",
+      "detection": "Monitor API hooks on SetWindowsHookEx, GetAsyncKeyState, and access to raw input devices.",
+      "mitigations": ["Use virtual keyboards or password managers", "Deploy endpoint security with keystroke protection"]
+    }
+  }
+}

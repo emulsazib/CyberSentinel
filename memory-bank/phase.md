@@ -2,7 +2,7 @@
 
 ## Current Phase
 
-**Artifacts & documentation** — core GRPO training pipeline implemented in notebook; LoRA adapters and tokenizer exported to repo. knbase initialized for ongoing agent-guided development.
+**Web Application & Evaluation** — Full-stack CTI Chatbot with Express.js backend and React.js frontend built and verified. Connected to LoRA model directory artifacts with real-time inference and MITRE ATT&CK exploration.
 
 ## Completed
 
@@ -12,16 +12,11 @@
 - [x] Trained LoRA adapters saved (`grpo_cti_lora_adapters/`)
 - [x] Tokenizer bundle saved (`grpo_cti_tokenizer_model/`)
 - [x] knbase governance initialized
+- [x] Standalone evaluation script (`evaluate_cti_agent.py`)
+- [x] Express.js backend API with Python LoRA inference bridge (`backend/`)
+- [x] React.js + Vite frontend with MITRE Matrix Navigator, Chain-of-Thought drawer, and IOC extractor (`frontend/`)
+- [x] Root orchestration npm scripts for unified dev/prod runs
 
-## In Progress
-
-- [ ] knbase bootstrap and project memory authoring
-
-## Next Up
-
-1. Add inference/evaluation cell loading saved LoRA adapters on sample CTI snippets.
-2. Fill in model card (`grpo_cti_lora_adapters/README.md`) with training details and usage.
-3. Run held-out evaluation metrics (accuracy, format compliance).
 
 ## Backlog
 
