@@ -8,6 +8,9 @@ import MitreDrawer from './components/MitreDrawer.jsx';
 import IocDrawer from './components/IocDrawer.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
 import SampleProbesModal from './components/SampleProbesModal.jsx';
+import ReasoningDashboard from './components/ReasoningDashboard.jsx';
+import { parseReasoningSteps } from './utils/reasoningParser.js';
+
 
 import {
   fetchSystemStatus,
@@ -52,7 +55,8 @@ export default function App() {
   const [tactics, setTactics] = useState([]);
   const [techniques, setTechniques] = useState([]);
 
-  // UI States
+  // UI States & View Modes
+  const [currentView, setCurrentView] = useState('chat'); // 'chat' | 'dashboard'
   const [isLoading, setIsLoading] = useState(false);
   const [mode, setMode] = useState('cti');
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
@@ -63,6 +67,7 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSamplesOpen, setIsSamplesOpen] = useState(false);
   const [inspectedTechnique, setInspectedTechnique] = useState(null);
+
 
   // Save sessions to localStorage
   useEffect(() => {
@@ -303,17 +308,27 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
+  const reasoningStepCount = useMemo(() => {
+    if (!activeSession?.messages) return 0;
+    return activeSession.messages
+      .filter(m => m.role === 'assistant' && (m.reasoning || m.raw_response))
+      .reduce((acc, m) => acc + parseReasoningSteps(m.reasoning || m.raw_response || '').length, 0);
+  }, [activeSession]);
+
   return (
     <div className="app-container">
       {/* Top Header */}
       <Header
         systemStatus={systemStatus}
+        currentView={currentView}
+        onChangeView={setCurrentView}
         onNewSession={handleNewSession}
         onOpenMatrix={() => setIsMatrixOpen(true)}
         onOpenIocs={() => setIsIocsOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onExportSession={handleExportSession}
         iocCount={aggregatedIocs.totalCount}
+        reasoningStepCount={reasoningStepCount}
       />
 
       {/* Main Workspace Body */}
@@ -327,27 +342,42 @@ export default function App() {
           samples={samples}
           onSelectSample={handleSelectSample}
           systemStatus={systemStatus}
+          currentView={currentView}
+          onChangeView={setCurrentView}
+          reasoningStepCount={reasoningStepCount}
         />
 
         <main style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-          <ChatArea
-            messages={activeSession?.messages || []}
-            isLoading={isLoading}
-            onSendMessage={handleSendMessage}
-            onInspectTechnique={handleInspectTechnique}
-            samples={samples}
-          />
+          {currentView === 'dashboard' ? (
+            <ReasoningDashboard
+              messages={activeSession?.messages || []}
+              systemStatus={systemStatus}
+              onInspectTechnique={handleInspectTechnique}
+              onClose={() => setCurrentView('chat')}
+            />
+          ) : (
+            <>
+              <ChatArea
+                messages={activeSession?.messages || []}
+                isLoading={isLoading}
+                onSendMessage={handleSendMessage}
+                onInspectTechnique={handleInspectTechnique}
+                samples={samples}
+              />
 
-          <ChatInput
-            onSendMessage={handleSendMessage}
-            isLoading={isLoading}
-            onStop={() => setIsLoading(false)}
-            mode={mode}
-            setMode={setMode}
-            onOpenSampleProbes={() => setIsSamplesOpen(true)}
-          />
+              <ChatInput
+                onSendMessage={handleSendMessage}
+                isLoading={isLoading}
+                onStop={() => setIsLoading(false)}
+                mode={mode}
+                setMode={setMode}
+                onOpenSampleProbes={() => setIsSamplesOpen(true)}
+              />
+            </>
+          )}
         </main>
       </div>
+
 
       {/* Modals and Drawers */}
       <MitreMatrixModal

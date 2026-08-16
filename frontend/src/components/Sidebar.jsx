@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Trash2, MessageSquare, Flame, CheckCircle, Terminal, HardDrive } from 'lucide-react';
+import { Plus, Trash2, MessageSquare, Flame, CheckCircle, Terminal, HardDrive, BrainCircuit, LayoutDashboard } from 'lucide-react';
 
 export default function Sidebar({
   sessions,
@@ -9,16 +9,43 @@ export default function Sidebar({
   onDeleteSession,
   samples = [],
   onSelectSample,
-  systemStatus
+  systemStatus,
+  currentView = 'chat',
+  onChangeView = () => {},
+  reasoningStepCount = 0
 }) {
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
         <button className="new-chat-btn" onClick={onNewSession}>
-          <Plus size={16} />
+          <Plus size={15} />
           <span>New Threat Analysis</span>
         </button>
+
+        <div className="sidebar-nav-group">
+          <button 
+            className={`sidebar-nav-btn ${currentView === 'chat' ? 'active' : ''}`}
+            onClick={() => onChangeView('chat')}
+            title="Chat Session"
+          >
+            <MessageSquare size={15} style={{ flexShrink: 0 }} />
+            <span className="sidebar-nav-label">Chat Session</span>
+          </button>
+          <button 
+            className={`sidebar-nav-btn ${currentView === 'dashboard' ? 'active' : ''}`}
+            onClick={() => onChangeView('dashboard')}
+            title="Reasoning Step Dashboard"
+          >
+            <BrainCircuit size={15} style={{ flexShrink: 0 }} />
+            <span className="sidebar-nav-label">Reasoning Steps</span>
+            {reasoningStepCount > 0 && (
+              <span className="sidebar-step-badge">{reasoningStepCount}</span>
+            )}
+          </button>
+        </div>
       </div>
+
+
 
       <div className="sidebar-content">
         {/* Past Sessions */}

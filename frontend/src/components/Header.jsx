@@ -3,12 +3,15 @@ import { Shield, Grid, Terminal, Settings, Download, Plus, Cpu, Activity } from 
 
 export default function Header({
   systemStatus,
+  currentView = 'chat',
+  onChangeView = () => {},
   onNewSession,
   onOpenMatrix,
   onOpenIocs,
   onOpenSettings,
   onExportSession,
-  iocCount = 0
+  iocCount = 0,
+  reasoningStepCount = 0
 }) {
   const isOnline = systemStatus?.status === 'online';
   const modelLoaded = systemStatus?.model?.model_loaded;
@@ -27,6 +30,29 @@ export default function Header({
       </div>
 
       <div className="header-center">
+        {/* View Switcher: Chat vs Reasoning Dashboard */}
+        <div className="view-mode-pill-group">
+          <button 
+            className={`view-mode-btn ${currentView === 'chat' ? 'active' : ''}`}
+            onClick={() => onChangeView('chat')}
+            title="Interactive CTI Chat Session"
+          >
+            <span>Chat Session</span>
+          </button>
+          <button 
+            className={`view-mode-btn ${currentView === 'dashboard' ? 'active' : ''}`}
+            onClick={() => onChangeView('dashboard')}
+            title="Step-by-Step Model Reasoning Dashboard"
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              Reasoning Dashboard
+              {reasoningStepCount > 0 && (
+                <span className="header-step-badge">{reasoningStepCount}</span>
+              )}
+            </span>
+          </button>
+        </div>
+
         <div className="model-status-pill" title={`Device: ${device.toUpperCase()} | Base: Qwen2.5-1.5B | LoRA Adapters Active`}>
           <div className={`status-dot ${isOnline ? (modelLoaded ? 'online' : 'active') : 'warning'}`} />
           <span>{modelLoaded ? 'Qwen2.5-1.5B LoRA' : 'CTI Policy Engine'}</span>
@@ -55,6 +81,7 @@ export default function Header({
           <Activity size={14} />
           <span>IOCs {iocCount > 0 && `(${iocCount})`}</span>
         </button>
+
 
         <button
           className="btn btn-ghost btn-icon"

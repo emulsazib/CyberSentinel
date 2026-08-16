@@ -76,8 +76,10 @@ export default function ChatMessage({ message, onInspectTechnique }) {
               <ReasoningDrawer
                 reasoning={message.reasoning}
                 wordCount={message.word_count}
+                technique={message.answer}
               />
             )}
+
 
             {/* MITRE technique card */}
             {message.answer && (
