@@ -1213,9 +1213,7 @@ body {
   font-weight: 700;
   border: 1px solid rgba(0, 229, 153, 0.25);
 }
-  border-radius: var(--radius-full);
-  font-weight: 700;
-}
+
 
 /* ==========================================================================
    Reasoning Steps Drawer Timeline (Inside Chat Message)
