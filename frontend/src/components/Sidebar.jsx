@@ -108,7 +108,7 @@ export default function Sidebar({
       <div className="sidebar-footer">
         <div className="system-stat-row">
           <span>Base Model:</span>
-          <span style={{ color: 'var(--text-primary)' }}>Qwen2.5-1.5B</span>
+          <span style={{ color: 'var(--text-primary)' }}>Qwen3-4B</span>
         </div>
         <div className="system-stat-row">
           <span>LoRA Adapter:</span>

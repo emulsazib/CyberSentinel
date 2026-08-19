@@ -51,3 +51,8 @@ mlruns/
 grpo_cti_*.zip
 grpo_cti_lora_adapters/
 grpo_cti_tokenizer_model/
+
+# Quantised GGUF policies (~2.5GB each) — keep the directory, not the weights
+models/*.gguf
+grpo_cti_merged/
+grpo_cti_gguf/

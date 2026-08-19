@@ -53,9 +53,9 @@ export default function Header({
           </button>
         </div>
 
-        <div className="model-status-pill" title={`Device: ${device.toUpperCase()} | Base: Qwen2.5-1.5B | LoRA Adapters Active`}>
+        <div className="model-status-pill" title={`Device: ${device.toUpperCase()} | Base: Qwen3-4B | LoRA Adapters Active`}>
           <div className={`status-dot ${isOnline ? (modelLoaded ? 'online' : 'active') : 'warning'}`} />
-          <span>{modelLoaded ? 'Qwen2.5-1.5B LoRA' : 'CTI Policy Engine'}</span>
+          <span>{modelLoaded ? 'Qwen3-4B LoRA' : 'CTI Policy Engine'}</span>
           <span style={{ color: 'var(--text-muted)' }}>•</span>
           <span style={{ color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', gap: '3px' }}>
             <Cpu size={12} /> {device.toUpperCase()}

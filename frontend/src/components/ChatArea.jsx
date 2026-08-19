@@ -48,7 +48,7 @@ export default function ChatArea({
             </div>
             <h1 className="welcome-title">CyberSentinel Threat Intelligence AI</h1>
             <p className="welcome-desc">
-              Explainable CTI analyst model fine-tuned with <strong>GRPO (Group Relative Policy Optimization)</strong> on <strong>Qwen2.5-1.5B</strong>. Paste raw adversary logs, PowerShell telemetry, or threat snippets to generate auditable step-by-step reasoning and precise MITRE ATT&CK technique IDs.
+              Explainable CTI analyst model fine-tuned with <strong>GRPO (Group Relative Policy Optimization)</strong> on <strong>Qwen3-4B</strong>. Paste raw adversary logs, PowerShell telemetry, or threat snippets to generate auditable step-by-step reasoning and precise MITRE ATT&CK technique IDs.
             </p>
 
             <div className="quick-prompts-grid">

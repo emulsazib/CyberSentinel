@@ -26,7 +26,7 @@ const STORAGE_KEY = 'cybersentinel_sessions_v1';
 const DEFAULT_SETTINGS = {
   temperature: 0.1,
   max_new_tokens: 256,
-  base_model: 'Qwen/Qwen2.5-1.5B-Instruct',
+  base_model: 'Qwen/Qwen3-4B-Instruct-2507',
   adapter_path: './grpo_cti_tokenizer_model'
 };
 

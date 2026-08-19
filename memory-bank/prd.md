@@ -6,7 +6,7 @@ Security analysts spend significant time manually mapping unstructured cyber thr
 
 ## Goals
 
-- Train a small language model (Qwen2.5-1.5B-Instruct) to read CTI snippets and output the most relevant MITRE ATT&CK technique ID.
+- Train a small language model (Qwen3-4B-Instruct-2507) to read CTI snippets and output the most relevant MITRE ATT&CK technique ID.
 - Produce explainable outputs with step-by-step reasoning in `<reasoning>` tags and the technique ID in `<answer>` tags.
 - Use GRPO (Group Relative Policy Optimization) with rule-based rewards so training fits a single 16GB GPU (Kaggle T4).
 - Ship reusable LoRA adapters and tokenizer artifacts for inference and further fine-tuning.
@@ -19,7 +19,7 @@ Security analysts spend significant time manually mapping unstructured cyber thr
 
 ## Functional Requirements
 
-1. Load Qwen2.5-1.5B-Instruct in 4-bit via Unsloth with vLLM fast inference.
+1. Load Qwen3-4B-Instruct-2507 in 4-bit via Unsloth with vLLM fast inference.
 2. Fine-tune LoRA adapters using GRPOTrainer on `tumeteor/Security-TTP-Mapping` (CTI text → technique labels).
 3. Reward functions: strict XML format (+1), correct technique ID (+2 / -1), optional soft format scaffolding.
 4. Save trained LoRA adapters and tokenizer to disk (`grpo_cti_lora_adapters/`, `grpo_cti_tokenizer_model/`).

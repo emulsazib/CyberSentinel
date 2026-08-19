@@ -23,7 +23,7 @@ CyberSentinel is a research/training project centered on a single Jupyter notebo
 
 ## Tech Stack
 
-- **Base model**: `Qwen/Qwen2.5-1.5B-Instruct` (4-bit via Unsloth)
+- **Base model**: `Qwen/Qwen3-4B-Instruct-2507` (Apache-2.0, 4-bit via Unsloth)
 - **Training**: Unsloth FastLanguageModel, TRL GRPOTrainer (`trl==0.15.2`), PEFT LoRA
 - **Inference engine**: vLLM (with FlashInfer disabled on T4)
 - **Data**: Hugging Face `datasets`, `tumeteor/Security-TTP-Mapping`

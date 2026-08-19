@@ -4,7 +4,7 @@ evaluate_cti_agent.py
 =====================
 Standalone evaluation harness for the GRPO-trained Explainable CTI Agent.
 
-Loads a 4-bit Qwen2.5 base model + trained LoRA adapters via transformers/peft
+Loads a 4-bit Qwen3 base model + trained LoRA adapters via transformers/peft
 (no Unsloth / vLLM), runs inference on a small held-out-style probe set, and
 reports:
   - Format Adherence  (both <reasoning> and <answer> tags present)
@@ -16,9 +16,11 @@ Usage
     python evaluate_cti_agent.py
     python evaluate_cti_agent.py --adapter_path ./final_cti_agent
     python evaluate_cti_agent.py --adapter_path ./grpo_cti_tokenizer_model \\
-                                 --base_model Qwen/Qwen2.5-1.5B-Instruct
+                                 --base_model Qwen/Qwen3-4B-Instruct-2507
 
-Requires: transformers, peft, torch, bitsandbytes, accelerate
+Requires: transformers>=4.51 (Qwen3), peft, torch, bitsandbytes, accelerate
+Note: bitsandbytes 4-bit is CUDA-only, so run this on a GPU host (e.g. Kaggle),
+not on Apple Silicon. For local checks use the GGUF via backend/inference_service.py.
 """
 
 from __future__ import annotations
@@ -42,7 +44,7 @@ from transformers import (
 # =============================================================================
 # Prefer the tokenizer+LoRA bundle from training when present in this repo.
 # Override with --adapter_path ./final_cti_agent (or any PEFT adapter directory).
-DEFAULT_BASE_MODEL = "Qwen/Qwen2.5-1.5B-Instruct"
+DEFAULT_BASE_MODEL = "Qwen/Qwen3-4B-Instruct-2507"
 DEFAULT_ADAPTER_PATH = "./grpo_cti_tokenizer_model"
 
 # Exact system prompt used during GRPO training (malware-behavior.ipynb).

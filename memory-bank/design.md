@@ -20,7 +20,8 @@
 | Decision | Rationale |
 | --- | --- |
 | GRPO over PPO | No critic model → ~half GPU memory; better for long reasoning on 16GB T4 |
-| Qwen2.5-1.5B over 7B | Fits 4-bit + vLLM + LoRA + G=4 generations on T4 without OOM |
+| Qwen3-4B over 2.5-3B | 2.5-3B is non-commercial `qwen-research`; Qwen3-4B is Apache-2.0, larger, and non-thinking (no `<think>` vs `<reasoning>` clash) |
+| GGUF Q4_K_M for serving | ~2.5GB vs ~8GB fp16; llama.cpp has fast quantised CPU kernels where PyTorch CPU fp16/bf16 has none |
 | Rule-based rewards | Deterministic, no reward model API cost; aligns with exact ATT&CK ID matching |
 | `UNSLOTH_VLLM_NO_FLASHINFER=1` | Kaggle T4 linker lacks `-lcuda`; Triton sampler fallback works |
 | LoRA rank 16 | Balance between capacity and memory on small GPU |

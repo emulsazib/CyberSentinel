@@ -29,7 +29,7 @@ penetration-testing, exploit, or malware-generation tool.
 - Backend: Express.js (ESM) on port 5001. Serves /api/* and, if present,
   the frontend/dist SPA.
 - Inference: a long-lived Python 3 JSON-RPC process (stdin/stdout, one
-  JSON object per line) spawned by Node. Load Qwen/Qwen2.5-1.5B-Instruct
+  JSON object per line) spawned by Node. Load Qwen/Qwen3-4B-Instruct-2507
   + PEFT LoRA from ./grpo_cti_tokenizer_model (fallback
   ./grpo_cti_lora_adapters). Auto-detect CUDA → MPS → CPU. If torch/peft
   are missing, use a heuristic CTI engine that still emits the same XML
@@ -108,7 +108,7 @@ Technique ID regex: T\d{4}(?:\.\d{3})?
 
 ## UI (dark SOC console)
 Palette: bg #090d14 / #0f1520 / #141b29, accent #00e599, fonts Inter +
-JetBrains Mono. Shield logo. Header: live model pill (Qwen2.5-1.5B LoRA
+JetBrains Mono. Shield logo. Header: live model pill (Qwen3-4B LoRA
 or CTI Policy Engine + device), ATT&CK Matrix, IOC count, settings,
 export markdown report, new session.
 

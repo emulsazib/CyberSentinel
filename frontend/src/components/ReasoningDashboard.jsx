@@ -49,7 +49,7 @@ export default function ReasoningDashboard({
           mitreDetails: m.mitre,
           wordCount: m.word_count || (m.reasoning ? m.reasoning.split(/\s+/).length : 0),
           latencyMs: m.latencyMs || 0,
-          engine: m.engine || 'Fine-Tuned Neural Policy (Qwen2.5-1.5B LoRA on mps)',
+          engine: m.engine || 'Fine-Tuned Neural Policy (Qwen3-4B LoRA on metal)',
           device: m.device || 'mps',
           steps,
           iocs: m.iocs || { totalCount: 0 }
@@ -213,7 +213,7 @@ export default function ReasoningDashboard({
           <div className="kpi-info">
             <span className="kpi-label">Neural Engine</span>
             <span className="kpi-value" style={{ fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
-              Qwen2.5-1.5B LoRA
+              Qwen3-4B LoRA
             </span>
             <span className="kpi-sub">Apple Silicon MPS ({metrics.avgLatency}ms)</span>
           </div>

@@ -2,25 +2,44 @@
 """
 CyberSentinel Inference Service
 ===============================
-Direct neural inference service for GRPO-trained LoRA CTI agent.
-Loads base model Qwen/Qwen2.5-1.5B-Instruct + grpo_cti_tokenizer_model / adapters
-on Apple Silicon GPU (MPS), CUDA, or CPU.
+Direct neural inference service for the GRPO-trained CTI agent.
 Communicates via JSON-RPC over stdin/stdout.
+
+Two engines, tried in order:
+
+  1. llama.cpp GGUF  — a quantised single-file model (Q4_K_M, ~2.5GB for a 4B
+     policy). Preferred for local serving: it is the only option that fits an
+     8GB machine, and llama.cpp has fast quantised CPU kernels plus Metal
+     offload on Apple Silicon. Enable by pointing CTI_GGUF_PATH at the file, or
+     by dropping a .gguf into models/.
+  2. transformers + PEFT — base model (Qwen3-4B-Instruct-2507) plus LoRA
+     adapters from grpo_cti_tokenizer_model / grpo_cti_lora_adapters, on
+     CUDA -> MPS -> CPU. Needs the full fp16/fp32 weights in RAM.
 """
 
 from __future__ import annotations
 
+import glob
 import json
 import os
+import platform
 import re
 import sys
 from typing import Any, Dict, Optional
 
 # Paths
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-DEFAULT_BASE_MODEL = "Qwen/Qwen2.5-1.5B-Instruct"
+DEFAULT_BASE_MODEL = "Qwen/Qwen3-4B-Instruct-2507"
 DEFAULT_ADAPTER_PATH = os.path.join(ROOT_DIR, "grpo_cti_tokenizer_model")
 FALLBACK_ADAPTER_PATH = os.path.join(ROOT_DIR, "grpo_cti_lora_adapters")
+
+# GGUF: explicit path wins, else the first *.gguf found in models/
+DEFAULT_GGUF_DIR = os.path.join(ROOT_DIR, "models")
+GGUF_PATH_ENV = os.environ.get("CTI_GGUF_PATH", "").strip()
+# -1 offloads every layer to the GPU (Metal on Apple Silicon); 0 forces pure CPU.
+GGUF_GPU_LAYERS = int(os.environ.get("CTI_GPU_LAYERS", "-1"))
+# Prompt (<=640) + completion (256) fit well inside this.
+GGUF_N_CTX = int(os.environ.get("CTI_N_CTX", "2048"))
 
 # Exact system prompt used during GRPO policy training
 SYSTEM_PROMPT = (
@@ -44,6 +63,26 @@ g_tokenizer = None
 g_device_name = "cpu"
 g_model_loaded = False
 g_load_error = None
+g_engine = None          # "gguf" | "transformers"
+g_model_source = None    # gguf file path, or the base-model id
+
+
+def resolve_gguf_path() -> Optional[str]:
+    """Return the GGUF to load, or None. CTI_GGUF_PATH wins; else first models/*.gguf."""
+    if GGUF_PATH_ENV:
+        candidate = GGUF_PATH_ENV
+        if not os.path.isabs(candidate):
+            candidate = os.path.join(ROOT_DIR, candidate)
+        if os.path.isfile(candidate):
+            return candidate
+        sys.stderr.write(
+            f"[CyberSentinel] CTI_GGUF_PATH={GGUF_PATH_ENV!r} does not exist; ignoring.\n"
+        )
+        sys.stderr.flush()
+        return None
+
+    matches = sorted(glob.glob(os.path.join(DEFAULT_GGUF_DIR, "*.gguf")))
+    return matches[0] if matches else None
 
 
 def extract_reasoning(text: str) -> Optional[str]:
@@ -59,8 +98,60 @@ def extract_answer(text: str) -> Optional[str]:
     return tid.group(0).upper() if tid else match.group(1).strip().upper() or None
 
 
+def try_load_gguf(gguf_path: str) -> bool:
+    """Load a quantised GGUF through llama.cpp. Returns True on success."""
+    global g_model, g_tokenizer, g_device_name, g_model_loaded, g_load_error
+    global g_engine, g_model_source
+
+    try:
+        from llama_cpp import Llama
+
+        size_gb = os.path.getsize(gguf_path) / 1e9
+        sys.stderr.write(
+            f"[CyberSentinel] Loading GGUF policy '{os.path.basename(gguf_path)}' "
+            f"({size_gb:.2f} GB, n_gpu_layers={GGUF_GPU_LAYERS}, n_ctx={GGUF_N_CTX})...\n"
+        )
+        sys.stderr.flush()
+
+        model = Llama(
+            model_path=gguf_path,
+            n_ctx=GGUF_N_CTX,
+            n_gpu_layers=GGUF_GPU_LAYERS,
+            verbose=False,
+        )
+
+        # Metal is the only GPU backend reachable here (llama-cpp-python built with
+        # -DGGML_METAL=on). Everything else runs on optimised quantised CPU kernels.
+        on_apple_gpu = GGUF_GPU_LAYERS != 0 and platform.system() == "Darwin"
+        g_device_name = "metal" if on_apple_gpu else "cpu"
+
+        g_model = model
+        g_tokenizer = None          # llama.cpp owns tokenization and the chat template
+        g_engine = "gguf"
+        g_model_source = gguf_path
+        g_model_loaded = True
+        g_load_error = None
+        sys.stderr.write(
+            f"[CyberSentinel] GGUF CTI policy successfully loaded on {g_device_name}!\n"
+        )
+        sys.stderr.flush()
+        return True
+    except Exception as exc:  # noqa: BLE001
+        g_load_error = str(exc)
+        sys.stderr.write(f"[CyberSentinel] Warning: GGUF load exception ({exc}).\n")
+        sys.stderr.flush()
+        return False
+
+
 def try_load_model(base_model: str = DEFAULT_BASE_MODEL, adapter_path: str = DEFAULT_ADAPTER_PATH):
     global g_model, g_tokenizer, g_device_name, g_model_loaded, g_load_error
+    global g_engine, g_model_source
+
+    # Prefer GGUF when one is available — it is the only engine that fits a
+    # small-RAM host, and llama.cpp is far faster than PyTorch on CPU.
+    gguf_path = resolve_gguf_path()
+    if gguf_path and try_load_gguf(gguf_path):
+        return True
 
     target_adapter = adapter_path
     if not os.path.exists(target_adapter) and os.path.exists(FALLBACK_ADAPTER_PATH):
@@ -83,6 +174,15 @@ def try_load_model(base_model: str = DEFAULT_BASE_MODEL, adapter_path: str = DEF
             g_device_name = "cpu"
             device_map = None
             model_dtype = torch.float32
+
+        # CTI_DTYPE overrides the device default (e.g. bfloat16 to halve CPU RAM use)
+        dtype_override = os.environ.get("CTI_DTYPE", "auto").strip().lower()
+        if dtype_override and dtype_override != "auto":
+            candidate = getattr(torch, dtype_override, None)
+            if isinstance(candidate, torch.dtype):
+                model_dtype = candidate
+            else:
+                sys.stderr.write(f"[CyberSentinel] Unknown CTI_DTYPE '{dtype_override}', keeping {model_dtype}.\n")
 
         sys.stderr.write(f"[CyberSentinel] Loading base neural model '{base_model}' on {g_device_name} (dtype: {model_dtype})...\n")
         sys.stderr.flush()
@@ -118,6 +218,8 @@ def try_load_model(base_model: str = DEFAULT_BASE_MODEL, adapter_path: str = DEF
 
         g_model = model
         g_tokenizer = tokenizer
+        g_engine = "transformers"
+        g_model_source = base_model
         g_model_loaded = True
         g_load_error = None
         sys.stderr.write(f"[CyberSentinel] Neural CTI model & LoRA weights successfully loaded into memory on {g_device_name}!\n")
@@ -129,6 +231,56 @@ def try_load_model(base_model: str = DEFAULT_BASE_MODEL, adapter_path: str = DEF
         sys.stderr.write(f"[CyberSentinel] Warning: Neural load exception ({exc}).\n")
         sys.stderr.flush()
         return False
+
+
+def build_messages(instruction: str, system_prompt: str, is_chat: bool):
+    """The prompt contract the policy was rewarded against — identical for both engines."""
+    user = instruction if is_chat else f"CTI snippet:\n{instruction}"
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user},
+    ]
+
+
+def parse_generation(raw_response: str) -> Dict[str, Any]:
+    """Shared post-processing: pull <reasoning>/<answer> out of raw model text."""
+    reasoning = extract_reasoning(raw_response)
+    answer = extract_answer(raw_response)
+    word_count = len(reasoning.split()) if reasoning else len(raw_response.split())
+    return {
+        "raw_response": raw_response,
+        "reasoning": reasoning or raw_response,
+        "answer": answer,
+        "word_count": word_count,
+    }
+
+
+def generate_gguf(
+    instruction: str,
+    system_prompt: str,
+    temperature: float,
+    max_new_tokens: int,
+    is_chat: bool,
+) -> Dict[str, Any]:
+    """Generate through llama.cpp. The GGUF carries its own chat template."""
+    messages = build_messages(instruction, system_prompt, is_chat)
+
+    result = g_model.create_chat_completion(
+        messages=messages,
+        temperature=temperature,
+        top_p=0.9,
+        max_tokens=max_new_tokens,
+    )
+    raw_response = (result["choices"][0]["message"]["content"] or "").strip()
+
+    quant = os.path.basename(g_model_source or "gguf")
+    return {
+        "status": "ok",
+        "engine": f"Fine-Tuned Neural Policy (llama.cpp {quant} on {g_device_name})",
+        "device": g_device_name,
+        "model_loaded": True,
+        **parse_generation(raw_response),
+    }
 
 
 def generate_cti_response(
@@ -144,20 +296,20 @@ def generate_cti_response(
     if not g_model_loaded or g_model is None:
         try_load_model()
 
+    if g_model_loaded and g_model is not None and g_engine == "gguf":
+        try:
+            return generate_gguf(
+                instruction, system_prompt, temperature, max_new_tokens, is_chat
+            )
+        except Exception as exc:  # noqa: BLE001
+            sys.stderr.write(f"[CyberSentinel] GGUF generation exception: {exc}\n")
+            sys.stderr.flush()
+
     if g_model_loaded and g_model is not None and g_tokenizer is not None:
         try:
             import torch
 
-            if is_chat:
-                messages = [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": instruction},
-                ]
-            else:
-                messages = [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"CTI snippet:\n{instruction}"},
-                ]
+            messages = build_messages(instruction, system_prompt, is_chat)
 
             prompt_text = g_tokenizer.apply_chat_template(
                 messages,
@@ -186,19 +338,13 @@ def generate_cti_response(
             generated_ids = outputs[0][prompt_len:]
             raw_response = g_tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
 
-            reasoning = extract_reasoning(raw_response)
-            answer = extract_answer(raw_response)
-            word_count = len(reasoning.split()) if reasoning else len(raw_response.split())
-
+            short_name = (g_model_source or DEFAULT_BASE_MODEL).split("/")[-1]
             return {
                 "status": "ok",
-                "engine": f"Fine-Tuned Neural Policy (Qwen2.5-1.5B LoRA on {g_device_name})",
+                "engine": f"Fine-Tuned Neural Policy ({short_name} LoRA on {g_device_name})",
                 "device": g_device_name,
-                "raw_response": raw_response,
-                "reasoning": reasoning or raw_response,
-                "answer": answer,
-                "word_count": word_count,
                 "model_loaded": True,
+                **parse_generation(raw_response),
             }
         except Exception as exc:
             sys.stderr.write(f"[CyberSentinel] Neural generation exception: {exc}\n")
@@ -235,8 +381,14 @@ def main():
                     "status": "ok",
                     "model_loaded": g_model_loaded,
                     "device": g_device_name,
-                    "base_model": DEFAULT_BASE_MODEL,
+                    "engine": g_engine,
+                    # Always an HF id — the GGUF's own file path is reported
+                    # separately, so the UI's "Base Model ID" field stays sane.
+                    "base_model": (
+                        g_model_source if g_engine == "transformers" else DEFAULT_BASE_MODEL
+                    ) or DEFAULT_BASE_MODEL,
                     "adapter_path": DEFAULT_ADAPTER_PATH,
+                    "gguf_path": g_model_source if g_engine == "gguf" else None,
                     "load_error": g_load_error,
                 }
             elif action == "reload":

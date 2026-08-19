@@ -1,0 +1,43 @@
+services:
+  cybersentinel:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Swap for a CUDA index (e.g. .../whl/cu129) to build a GPU image.
+        TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
+    image: cybersentinel:1.0.0
+    container_name: cybersentinel
+    init: true
+    ports:
+      - "${HOST_PORT:-5001}:5001"
+    environment:
+      PORT: 5001
+      # PREFERRED ENGINE. Drop a Q4_K_M .gguf into ./models and it is picked up
+      # automatically (~2.5 GB resident). This is the only configuration that runs
+      # well on a small host: PyTorch has no fast CPU kernel for fp16/bf16 here
+      # (measured 0.15 tok/s, ~28 min per reply) while fp32 needs ~8 GB of weights.
+      # llama.cpp's quantised kernels are built for exactly this case.
+      CTI_GGUF_PATH: ${CTI_GGUF_PATH:-}
+      # 0 = pure CPU (correct inside Docker — containers cannot reach Metal on macOS).
+      CTI_GPU_LAYERS: ${CTI_GPU_LAYERS:-0}
+      CTI_N_CTX: ${CTI_N_CTX:-2048}
+      # Only used by the transformers fallback engine. "auto" = float32 on CPU,
+      # float16 on CUDA. See the dtype benchmark table in DOCKER.md before changing.
+      CTI_DTYPE: ${CTI_DTYPE:-auto}
+      # Bridge timeout for one generation. A timed-out request keeps running in
+      # Python and blocks the queue, so raise it rather than retrying.
+      CTI_TIMEOUT_MS: ${CTI_TIMEOUT_MS:-120000}
+      HF_HOME: /data/huggingface
+      # Only needed for gated/private Hugging Face repos.
+      HF_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      # Put your .gguf here — read-only, no rebuild needed to swap policies.
+      - ./models:/app/models:ro
+      # Persist the base-model download used by the transformers fallback engine.
+      - hf-cache:/data/huggingface
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+volumes:
+  hf-cache:

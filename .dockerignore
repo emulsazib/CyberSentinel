@@ -1,0 +1,46 @@
+# Version control / OS
+.git
+.gitignore
+.DS_Store
+**/.DS_Store
+Thumbs.db
+
+# Node + Python local environments (reinstalled inside the image)
+node_modules
+**/node_modules
+.venv
+venv
+env
+__pycache__
+**/__pycache__
+*.py[cod]
+
+# Built by the frontend build stage
+frontend/dist
+
+# Large training artifacts not needed at inference time
+grpo_cti_*.zip
+grpo_cti_merged
+grpo_cti_gguf
+*.ipynb
+.ipynb_checkpoints
+*.pdf
+Output_log.txt
+
+# GGUF weights are bind-mounted at runtime (see docker-compose.yml), never copied
+# into the image — a 2.5GB build context would slow every build for nothing.
+models/*.gguf
+
+# Tooling / editor state
+.cursor
+.knbase
+.vscode
+.idea
+memory-bank
+
+# Docker files themselves
+Dockerfile
+.dockerignore
+docker-compose.yml
+DOCKER.md
+.env

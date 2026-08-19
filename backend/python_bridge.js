@@ -6,6 +6,9 @@ import fs from 'node:fs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// CPU-only hosts can need minutes per response; deployments raise this via env.
+const INFERENCE_TIMEOUT_MS = Number(process.env.CTI_TIMEOUT_MS) || 120000;
+
 // Load MITRE database for fast lookups and enrichments
 const mitreDbPath = path.join(__dirname, 'data', 'mitre_database.json');
 let mitreData = { tactics: [], techniques: {} };
@@ -107,8 +110,8 @@ class PythonBridge {
             this.activeRequest = null;
             this.processNext();
           }
-          reject(new Error('Inference request timeout (120s)'));
-        }, 120000)
+          reject(new Error(`Inference request timeout (${Math.round(INFERENCE_TIMEOUT_MS / 1000)}s)`));
+        }, INFERENCE_TIMEOUT_MS)
       };
 
       this.queue.push(item);

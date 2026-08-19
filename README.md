@@ -9,7 +9,9 @@ Paste an EDR log, malware write-up, or CTI snippet. CyberSentinel returns:
 - Enriched tactic / technique metadata
 - Extracted IOCs (IPs, domains, hashes, registry keys, binaries)
 
-The policy is a **Qwen2.5-1.5B-Instruct** model fine-tuned with **GRPO** (Group Relative Policy Optimization) on [`tumeteor/Security-TTP-Mapping`](https://huggingface.co/datasets/tumeteor/Security-TTP-Mapping). A full-stack SOC console sits on top of the same inference contract.
+The policy is a **Qwen3-4B-Instruct-2507** model (Apache-2.0) fine-tuned with **GRPO** (Group Relative Policy Optimization) on [`tumeteor/Security-TTP-Mapping`](https://huggingface.co/datasets/tumeteor/Security-TTP-Mapping). A full-stack SOC console sits on top of the same inference contract.
+
+> **Model choice:** Qwen2.5-3B is deliberately *not* used — it ships under the non-commercial `qwen-research` licence. Qwen3-4B-Instruct-2507 is Apache-2.0, larger, and is the non-thinking variant, so it never emits `<think>` blocks that would collide with the `<reasoning>`/`<answer>` contract.
 
 > This project classifies and explains observed adversary behavior. It does not generate exploits, payloads, or attack procedures.
 
@@ -18,7 +20,7 @@ The policy is a **Qwen2.5-1.5B-Instruct** model fine-tuned with **GRPO** (Group 
 ## Features
 
 - **Explainable mapping** — reasoning drawer + MITRE technique badge, not a black-box ID
-- **Local inference** — CUDA, Apple Silicon MPS, or CPU; heuristic CTI engine if PyTorch is unavailable
+- **Local inference** — a quantised GGUF via llama.cpp (Metal / CPU, ~2.5 GB), or the full base model + LoRA via transformers on CUDA / MPS / CPU
 - **SOC console** — dark-theme React UI, investigation sessions, ATT&CK matrix navigator
 - **IOC extraction** — IPs, domains, hashes, registry paths, binaries, suspicious APIs; CSV / markdown export
 - **Benchmark probes** — eight held-out-style CTI samples with expected technique IDs
@@ -41,7 +43,7 @@ flowchart LR
   end
   subgraph inf [Inference]
     PY["inference_service.py"]
-    LORA["Qwen2.5-1.5B + LoRA"]
+    LORA["Qwen3-4B + LoRA / GGUF"]
     HEUR["Heuristic CTI engine"]
   end
 
@@ -73,7 +75,9 @@ flowchart LR
 
 - Node.js 18+
 - Python 3.10+ (3.12 recommended)
-- Optional, for live neural inference: `torch`, `transformers`, `peft`
+- For live inference, either:
+  - **`llama-cpp-python` + a `.gguf`** (recommended — ~2.5 GB, runs on a laptop), or
+  - `torch`, `transformers`, `peft` for the unquantised base model + LoRA (~8 GB)
 
 ### Install and run (development)
 
@@ -95,22 +99,53 @@ npm run build    # builds frontend/dist and installs backend deps
 npm start        # Express on :5001, serves the SPA if dist exists
 ```
 
-### Neural inference (optional)
+### Docker
 
-Without PyTorch the API still answers via the LoRA-aligned heuristic engine. To load the real model:
+The whole stack — API, Python inference service, and built SPA — runs from one image:
+
+```bash
+docker compose up --build -d     # http://localhost:5001
+docker compose logs -f           # watch the model load
+```
+
+Drop a `.gguf` into `./models/` first — compose mounts it read-only and the container
+serves it with llama.cpp (~2.5 GB, ~4 GB of RAM). Without one it falls back to
+downloading the full base model, which needs a 16 GB+ host.
+
+See [`DOCKER.md`](./DOCKER.md) for the engine benchmark, GPU builds, offline images,
+and configuration.
+
+### Local inference
+
+**Recommended — quantised GGUF.** Train and export one with the last cells of
+[`malware-behavior.ipynb`](./malware-behavior.ipynb), then:
+
+```bash
+# Apple Silicon: build with Metal. Use an arm64 Python — x86 is ~10x slower.
+CMAKE_ARGS="-DGGML_METAL=on" pip install llama-cpp-python
+
+mkdir -p models && cp ~/Downloads/cybersentinel-cti-q4_k_m.gguf models/
+npm run dev
+```
+
+`inference_service.py` picks up the first `models/*.gguf` automatically, or set
+`CTI_GGUF_PATH` to point somewhere else. `CTI_GPU_LAYERS=-1` (default) offloads every
+layer to Metal; `0` forces CPU.
+
+**Alternative — unquantised base + LoRA adapters.** Needs ~8 GB of RAM for a 4B policy:
 
 ```bash
 pip install torch transformers peft
 ```
-
-Place adapters next to the repo root (gitignored):
 
 ```text
 grpo_cti_tokenizer_model/     # preferred (tokenizer + adapters)
 grpo_cti_lora_adapters/       # fallback
 ```
 
-Device selection is automatic: **CUDA → MPS → CPU**. Status is visible in the header pill and `GET /api/status`.
+Device selection is automatic: **CUDA → MPS → CPU**. The engine that actually loaded
+is reported in the header pill and by `GET /api/status` (`engine: "gguf"` vs
+`"transformers"`).
 
 ---
 
@@ -170,22 +205,33 @@ Notebook: [`malware-behavior.ipynb`](./malware-behavior.ipynb)
 
 | Setting | Value |
 | --- | --- |
-| Base model | `Qwen/Qwen2.5-1.5B-Instruct` |
+| Base model | `Qwen/Qwen3-4B-Instruct-2507` (Apache-2.0) |
 | Quantization | 4-bit Unsloth QLoRA |
-| Algorithm | GRPO via `trl==0.15.2` (no critic / PPO) |
-| Dataset | `tumeteor/Security-TTP-Mapping` |
-| Hardware | Kaggle T4 16GB, **fp16 only** |
+| Algorithm | GRPO via TRL (no critic / PPO) — version resolved by Unsloth, **not pinned** |
+| Dataset | `tumeteor/Security-TTP-Mapping` (train 14,900 rows) |
+| Hardware | Kaggle **`GPU T4 x2`**, one T4 used, **fp16 only** |
 | LoRA rank | 16 (`q/k/v/o` + MLP projections) |
 | Group size `G` | 4 (must divide batch size) |
+| Sampling temperature | 0.9 — required for intra-group reward spread |
 | Completion length | 256 tokens |
 
-On Kaggle T4, set this **before** `import unsloth`:
+### Which Kaggle GPU
+
+Use **`GPU T4 x2`**. The P100 *cannot* run this notebook: vLLM requires CUDA compute
+capability ≥ 7.0 and P100 is 6.0, so `fast_inference=True` fails to initialise. T4 is
+7.5. Quota is 30 GPU-h/week with a 12-hour session cap, which is why the notebook
+checkpoints every 100 steps.
+
+Set these **before** `import unsloth`:
 
 ```python
-os.environ["UNSLOTH_VLLM_NO_FLASHINFER"] = "1"
+os.environ["UNSLOTH_VLLM_NO_FLASHINFER"] = "1"  # T4 linker failure on FlashInfer JIT
+os.environ["UNSLOTH_VLLM_STANDBY"] = "1"        # share memory between vLLM and training
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"        # Unsloth OSS is single-GPU
 ```
 
-Do not reinstall `torch` on Kaggle — it breaks the Unsloth/vLLM stack.
+Do not reinstall `torch` on Kaggle — it breaks the Unsloth/vLLM stack. Do not pin
+`trl==0.15.2` either: it predates Qwen3, which additionally needs `transformers>=4.51`.
 
 ### Reward functions
 
@@ -202,7 +248,7 @@ Ground-truth matching is **exact**: `T1059` does not satisfy `T1059.001`.
 ```bash
 python evaluate_cti_agent.py \
   --adapter_path ./grpo_cti_tokenizer_model \
-  --base_model Qwen/Qwen2.5-1.5B-Instruct
+  --base_model Qwen/Qwen3-4B-Instruct-2507
 ```
 
 Reports format adherence, accuracy, and reasoning word count on a five-snippet probe set.
@@ -218,8 +264,11 @@ CyberSentinel/
 ├── PROMPT.md                      # Mock / recreation + inference prompts
 ├── README.md
 ├── package.json                   # npm run dev | start | build
-├── malware-behavior.ipynb         # GRPO training
+├── malware-behavior.ipynb         # GRPO training + GGUF export
 ├── evaluate_cti_agent.py
+├── requirements.txt               # llama-cpp-python (+ optional torch stack)
+├── Dockerfile / docker-compose.yml / DOCKER.md
+├── models/                        # drop your *.gguf here (gitignored)
 ├── backend/
 │   ├── server.js
 │   ├── python_bridge.js
@@ -243,11 +292,15 @@ Large artifacts (`grpo_cti_*.zip`, `*.safetensors`, adapter directories) are git
 | --- | --- | --- |
 | `PORT` | `5001` | Express bind |
 | Vite port | `5173` | Dev UI |
+| `CTI_GGUF_PATH` | – | Explicit GGUF file; unset = first `models/*.gguf` |
+| `CTI_GPU_LAYERS` | `-1` | GGUF layers offloaded to GPU (`-1` all / Metal, `0` CPU) |
+| `CTI_N_CTX` | `2048` | llama.cpp context window |
+| `CTI_DTYPE` | `auto` | Fallback engine dtype (`auto` = float32 on CPU, float16 on CUDA/MPS) |
+| `CTI_TIMEOUT_MS` | `120000` | Python bridge inference timeout |
 | Temperature | `0.1` | UI Settings modal |
 | `max_new_tokens` | `256` | Matches training completion length |
-| Base model | `Qwen/Qwen2.5-1.5B-Instruct` | Hugging Face id |
+| Base model | `Qwen/Qwen3-4B-Instruct-2507` (Apache-2.0) | Hugging Face id |
 | Adapter path | `./grpo_cti_tokenizer_model` | Falls back to `grpo_cti_lora_adapters` |
-| Inference timeout | 60s | Python bridge queue |
 
 ---
 
@@ -264,9 +317,10 @@ Large artifacts (`grpo_cti_*.zip`, `*.safetensors`, adapter directories) are git
 
 ## Known limitations
 
-- Single-label mapping: one technique per snippet.
-- Heuristic fallback covers a fixed keyword set; install PyTorch for the trained policy.
-- Piper-style / cloud LLM backends are out of scope — this stack is local Qwen + LoRA.
+- Single-label mapping: one technique per snippet, even though the dataset is multi-label (any listed ID counts as correct during training).
+- No inference engine is bundled — without either a `models/*.gguf` or the PyTorch stack, `/api/chat` returns an error rather than a fallback answer.
+- Q4_K_M quantisation trades some accuracy for size; re-run `evaluate_cti_agent.py` against the merged weights before trusting the GGUF's numbers.
+- Cloud LLM backends are out of scope — this stack is local Qwen + LoRA / GGUF.
 - ATT&CK catalog in `mitre_database.json` is a curated subset used for UI enrichment, not a full STIX bundle.
 
 ---
