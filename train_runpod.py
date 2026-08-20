@@ -407,10 +407,44 @@ def auto_gpu_memory_utilization(vram_gb: float) -> float:
     return 0.60            # 16GB and below (T4, V100)
 
 
+INSTALL_HINT = """
+Missing dependency: {missing}
+
+Install the training stack into the environment that is actually running this
+code, then restart (Unsloth patches torch at import time):
+
+  shell / tmux:   pip install unsloth vllm
+  Jupyter cell:   %pip install unsloth vllm     <- installs into THIS kernel,
+                                                   then Kernel -> Restart Kernel
+
+A JupyterLab kernel frequently runs a different Python than the terminal's `pip`,
+so `!pip install` in a terminal can leave the notebook's kernel without it. `%pip`
+targets the running kernel and avoids that mismatch.
+
+Current interpreter: {exe}
+"""
+
+
+def require_dependencies() -> None:
+    """Fail early with an actionable message instead of a bare ModuleNotFoundError."""
+    import importlib.util
+
+    missing = [
+        name for name in ("unsloth", "vllm", "trl", "datasets", "torch")
+        if importlib.util.find_spec(name) is None
+    ]
+    if missing:
+        raise SystemExit(INSTALL_HINT.format(missing=", ".join(missing), exe=sys.executable))
+
+
 def load_policy(args, precision: str):
     """Load the 4-bit base + attach LoRA adapters. Imports Unsloth lazily."""
     import torch
-    from unsloth import FastLanguageModel
+
+    try:
+        from unsloth import FastLanguageModel
+    except ModuleNotFoundError as exc:
+        raise SystemExit(INSTALL_HINT.format(missing=exc.name, exe=sys.executable)) from exc
 
     dtype = torch.bfloat16 if precision == "bf16" else torch.float16
 
@@ -745,6 +779,7 @@ def main(argv=None) -> int:
 
     # --export-only never touches the GPU or Unsloth
     if args.export_only:
+        # (no dependency check here — conversion only needs llama.cpp)
         os.makedirs(args.gguf_dir, exist_ok=True)
         path = export_gguf(quant=args.quant, merged_dir=args.merged_dir,
                            gguf_dir=args.gguf_dir)
@@ -752,6 +787,7 @@ def main(argv=None) -> int:
         print(NEXT_STEPS.format(gguf=path, name=os.path.basename(path)))
         return 0
 
+    require_dependencies()        # actionable message before anything expensive
     configure_environment(args)   # MUST precede the unsloth import
     vram_gb = report_gpu()
 
