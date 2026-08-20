@@ -425,6 +425,30 @@ Current interpreter: {exe}
 """
 
 
+CUDA_MISMATCH_HINT = """
+vLLM was built against a different CUDA than your PyTorch.
+
+  torch CUDA : {torch_cuda}   (torch {torch_version})
+  failure    : {error}
+
+vLLM's default PyPI wheel targets CUDA 12.9/13.0. If torch on this pod is cu128,
+that wheel wants libnvrtc.so.13 / libcudart.so.13, which the CUDA 12 runtime does
+not provide. Install the vLLM build matching your torch:
+
+  VLLM_VERSION=$(python -c "import vllm; print(vllm.__version__)")
+  pip install "https://github.com/vllm-project/vllm/releases/download/v${{VLLM_VERSION}}/vllm-${{VLLM_VERSION}}+cu{cuda_tag}-cp38-abi3-manylinux_2_28_$(uname -m).whl" \\
+      --extra-index-url https://download.pytorch.org/whl/cu{cuda_tag}
+
+If that URL 404s (the manylinux tag varies between releases):
+
+  pip install -U uv
+  uv pip install --system -U vllm --torch-backend=cu{cuda_tag} \\
+      --extra-index-url https://wheels.vllm.ai/nightly/cu{cuda_tag}
+
+Verify afterwards:  python -c "import vllm; print(vllm.__version__)"
+"""
+
+
 def require_dependencies() -> None:
     """Fail early with an actionable message instead of a bare ModuleNotFoundError."""
     import importlib.util
@@ -435,6 +459,39 @@ def require_dependencies() -> None:
     ]
     if missing:
         raise SystemExit(INSTALL_HINT.format(missing=", ".join(missing), exe=sys.executable))
+
+    check_cuda_runtime_match()
+
+
+def check_cuda_runtime_match() -> None:
+    """Catch a vLLM/torch CUDA mismatch before the model load, not during it.
+
+    Unsloth calls patch_vllm() deep inside FastLanguageModel.from_pretrained, so a
+    mismatched wheel surfaces as a bare `ImportError: libnvrtc.so.13` several
+    minutes in. This probes the same import up front.
+    """
+    import torch
+
+    torch_cuda = torch.version.cuda or "cpu"
+    cuda_tag = torch_cuda.replace(".", "")[:3] or "128"
+
+    try:
+        # the exact import that fails on a mismatched wheel
+        from vllm.device_allocator.cumem import CuMemAllocator  # noqa: F401
+    except ImportError as exc:
+        if any(lib in str(exc) for lib in ("libnvrtc", "libcudart", "libcuda", ".so.")):
+            raise SystemExit(CUDA_MISMATCH_HINT.format(
+                torch_cuda=torch_cuda,
+                torch_version=torch.__version__,
+                error=exc,
+                cuda_tag=cuda_tag,
+            )) from exc
+        # anything else (module moved between vLLM versions) is not our problem here
+        print(f"[deps] note: could not probe vllm cumem allocator ({exc})")
+    except Exception as exc:  # noqa: BLE001 — probing must never block a good install
+        print(f"[deps] note: vllm probe skipped ({type(exc).__name__}: {exc})")
+    else:
+        print(f"[deps] vllm matches torch CUDA {torch_cuda}")
 
 
 def load_policy(args, precision: str):
@@ -449,15 +506,28 @@ def load_policy(args, precision: str):
     dtype = torch.bfloat16 if precision == "bf16" else torch.float16
 
     print(f"[model] loading {args.model} (4-bit, dtype={dtype})")
-    model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name=args.model,
-        max_seq_length=args.max_seq_length,
-        load_in_4bit=True,
-        fast_inference=True,          # generation through vLLM — GRPO's bottleneck
-        max_lora_rank=args.lora_rank,
-        gpu_memory_utilization=args.gpu_memory_utilization,
-        dtype=dtype,
-    )
+    try:
+        model, tokenizer = FastLanguageModel.from_pretrained(
+            model_name=args.model,
+            max_seq_length=args.max_seq_length,
+            load_in_4bit=True,
+            fast_inference=True,      # generation through vLLM — GRPO's bottleneck
+            max_lora_rank=args.lora_rank,
+            gpu_memory_utilization=args.gpu_memory_utilization,
+            dtype=dtype,
+        )
+    except ImportError as exc:
+        # Unsloth patches vLLM inside from_pretrained; a CUDA-mismatched wheel
+        # only blows up here, minutes into the run.
+        if any(lib in str(exc) for lib in ("libnvrtc", "libcudart", "libcuda", ".so.")):
+            torch_cuda = torch.version.cuda or "cpu"
+            raise SystemExit(CUDA_MISMATCH_HINT.format(
+                torch_cuda=torch_cuda,
+                torch_version=torch.__version__,
+                error=exc,
+                cuda_tag=torch_cuda.replace(".", "")[:3] or "128",
+            )) from exc
+        raise
 
     model = FastLanguageModel.get_peft_model(
         model,

@@ -230,6 +230,20 @@ tmux new -s cti                                    # survive a dropped connectio
 python train_runpod.py 2>&1 | tee /workspace/train.log
 ```
 
+**vLLM must match your torch's CUDA.** The default PyPI wheel targets CUDA 12.9/13.0,
+so on a `cu128` pod it fails with `ImportError: libnvrtc.so.13` — and only once Unsloth
+patches vLLM *inside* `from_pretrained`, minutes into the run. `train_runpod.py` probes
+for this up front and prints the fix, which is:
+
+```bash
+VLLM_VERSION=$(python -c "import vllm; print(vllm.__version__)")
+pip install "https://github.com/vllm-project/vllm/releases/download/v${VLLM_VERSION}/vllm-${VLLM_VERSION}+cu128-cp38-abi3-manylinux_2_28_$(uname -m).whl" \
+    --extra-index-url https://download.pytorch.org/whl/cu128
+```
+
+If that URL 404s (the manylinux tag varies by release):
+`pip install -U uv && uv pip install --system -U vllm --torch-backend=cu128 --extra-index-url https://wheels.vllm.ai/nightly/cu128`
+
 | Flag | Default | Purpose |
 | --- | --- | --- |
 | `--full-epoch` | off | ~3725 steps (one pass over 14,900 rows at 4 prompts/step) instead of `--max-steps 2000` |
