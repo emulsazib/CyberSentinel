@@ -60,7 +60,8 @@ flowchart LR
 
 | Layer | Path | Role |
 | --- | --- | --- |
-| Training | `malware-behavior.ipynb` | GRPO fine-tune, reward functions, adapter export |
+| Training (RunPod) | `train_runpod.py` + `malware-behavior-runpod.ipynb` | GRPO fine-tune on an A6000, bf16, GGUF export |
+| Training (Kaggle) | `malware-behavior.ipynb` | Original T4 notebook, fp16 |
 | Evaluation | `evaluate_cti_agent.py` | Format adherence, accuracy, reasoning length |
 | Weights | `grpo_cti_tokenizer_model/`, `grpo_cti_lora_adapters/` | Tokenizer + PEFT LoRA (not committed) |
 | API | `backend/` | Express routes + Python bridge |
@@ -215,6 +216,38 @@ Notebook: [`malware-behavior.ipynb`](./malware-behavior.ipynb)
 | Sampling temperature | 0.9 — required for intra-group reward spread |
 | Completion length | 256 tokens |
 
+### RunPod (RTX A6000, 48 GB) — recommended
+
+[`train_runpod.py`](./train_runpod.py) is the headless trainer;
+[`malware-behavior-runpod.ipynb`](./malware-behavior-runpod.ipynb) drives the same
+module interactively in JupyterLab, so the two cannot drift.
+
+```bash
+cd /workspace && git clone <this repo> && cd CyberSentinel
+pip install unsloth vllm
+
+tmux new -s cti                                    # survive a dropped connection
+python train_runpod.py 2>&1 | tee /workspace/train.log
+```
+
+| Flag | Default | Purpose |
+| --- | --- | --- |
+| `--full-epoch` | off | ~3725 steps (one pass over 14,900 rows at 4 prompts/step) instead of `--max-steps 2000` |
+| `--num-generations` | `4` | GRPO group size G; 48 GB comfortably allows 8 |
+| `--grad-accum` | `4` | Prompts per optimizer step |
+| `--resume` | off | Continue from the newest checkpoint in `/workspace/outputs` |
+| `--export-only` | off | Convert existing merged weights to GGUF, no training |
+| `--quant` | `q4_k_m` | `q5_k_m` if quantisation costs too much accuracy |
+
+Differences from the Kaggle T4 path, all Ampere-driven:
+
+- **bfloat16** instead of fp16 (`--precision auto` detects it; wider dynamic range at the same memory cost)
+- **FlashInfer stays enabled** — `UNSLOTH_VLLM_NO_FLASHINFER=1` existed only because vLLM's JIT link step failed with `cannot find -lcuda` on Kaggle
+- `gpu_memory_utilization=0.85` of 48 GB
+- Artifacts on the persistent volume: `/workspace/{outputs,grpo_cti_adapters,grpo_cti_merged,grpo_cti_gguf}`
+
+Everything lands as `/workspace/grpo_cti_gguf/cybersentinel-cti-q4_k_m.gguf`.
+
 ### Which Kaggle GPU
 
 Use **`GPU T4 x2`**. The P100 *cannot* run this notebook: vLLM requires CUDA compute
@@ -264,7 +297,9 @@ CyberSentinel/
 ├── PROMPT.md                      # Mock / recreation + inference prompts
 ├── README.md
 ├── package.json                   # npm run dev | start | build
-├── malware-behavior.ipynb         # GRPO training + GGUF export
+├── train_runpod.py                # GRPO trainer for RunPod (headless, argparse)
+├── malware-behavior-runpod.ipynb  # same module, interactive (JupyterLab)
+├── malware-behavior.ipynb         # original Kaggle T4 notebook
 ├── evaluate_cti_agent.py
 ├── requirements.txt               # llama-cpp-python (+ optional torch stack)
 ├── Dockerfile / docker-compose.yml / DOCKER.md
