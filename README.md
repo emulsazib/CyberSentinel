@@ -243,8 +243,19 @@ Differences from the Kaggle T4 path, all Ampere-driven:
 
 - **bfloat16** instead of fp16 (`--precision auto` detects it; wider dynamic range at the same memory cost)
 - **FlashInfer stays enabled** — `UNSLOTH_VLLM_NO_FLASHINFER=1` existed only because vLLM's JIT link step failed with `cannot find -lcuda` on Kaggle
-- `gpu_memory_utilization=0.85` of 48 GB
 - Artifacts on the persistent volume: `/workspace/{outputs,grpo_cti_adapters,grpo_cti_merged,grpo_cti_gguf}`
+
+`gpu_memory_utilization` adapts to whichever card the pod actually gave you, since
+vLLM reserves that share up front and the remainder has to hold the LoRA backward pass:
+
+| Detected VRAM | Share | Cards |
+| --- | --- | --- |
+| ≥ 38 GB | `0.85` | A6000 48 GB, A100 40/80 GB |
+| ≥ 20 GB | `0.70` | RTX 3090 / 4090, A5000 |
+| below | `0.60` | T4, V100 |
+
+Override with `--gpu-memory-utilization`. `G > 4` needs a 40 GB+ card — each extra
+generation is another concurrent sequence in the KV cache during sampling.
 
 Everything lands as `/workspace/grpo_cti_gguf/cybersentinel-cti-q4_k_m.gguf`.
 

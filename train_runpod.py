@@ -370,7 +370,8 @@ def resolve_precision(requested: str) -> str:
     return "fp16"
 
 
-def report_gpu() -> None:
+def report_gpu() -> float:
+    """Print GPU details, enforce the vLLM floor, return usable VRAM in GB."""
     import torch
 
     if not torch.cuda.is_available():
@@ -381,11 +382,29 @@ def report_gpu() -> None:
     vram = torch.cuda.get_device_properties(0).total_memory / 1e9
     print(f"[gpu] {name}  cc={cc[0]}.{cc[1]}  vram={vram:.1f} GB  torch={torch.__version__}")
 
-    # vLLM hard-requires compute capability >= 7.0 (A6000 = 8.6, T4 = 7.5, P100 = 6.0)
+    # vLLM hard-requires compute capability >= 7.0 (A6000/3090 = 8.6, T4 = 7.5, P100 = 6.0)
     if cc[0] < 7:
         raise SystemExit(
             f"{name} has compute capability {cc[0]}.{cc[1]}; vLLM requires >= 7.0."
         )
+    return vram
+
+
+def auto_gpu_memory_utilization(vram_gb: float) -> float:
+    """Pick vLLM's pool share from the card actually present.
+
+    vLLM reserves this fraction up front for weights + KV cache; whatever is left
+    has to hold the LoRA backward pass, optimizer state, and activations. The
+    defaults were tuned for a 48GB A6000, where 0.85 still leaves ~7GB. On a 24GB
+    card 0.85 leaves ~3.5GB and OOMs during the first training step, so scale the
+    share down as the card shrinks. Explicit --gpu-memory-utilization always wins.
+    """
+    # Thresholds sit just under the nominal size: a "40GB" A100 reports ~39.6.
+    if vram_gb >= 38:      # A6000 48GB, A100 40/80GB
+        return 0.85
+    if vram_gb >= 20:      # RTX 3090 / 4090 24GB, A5000 24GB
+        return 0.70
+    return 0.60            # 16GB and below (T4, V100)
 
 
 def load_policy(args, precision: str):
@@ -690,8 +709,9 @@ def parse_args(argv=None):
     g = p.add_argument_group("hardware")
     g.add_argument("--precision", choices=["auto", "bf16", "fp16"], default="auto",
                    help="auto picks bf16 on Ampere+ (native), fp16 otherwise")
-    g.add_argument("--gpu-memory-utilization", type=float, default=0.85,
-                   help="vLLM pool share. 0.85 of 48GB leaves room for training")
+    g.add_argument("--gpu-memory-utilization", type=float, default=None,
+                   help="vLLM pool share. Default adapts to the card: 0.85 at >=40GB "
+                        "(A6000), 0.70 at >=20GB (3090/4090), 0.60 below that")
     g.add_argument("--gpu", default="0", help="CUDA_VISIBLE_DEVICES value")
     g.add_argument("--no-standby", action="store_true",
                    help="Disable UNSLOTH_VLLM_STANDBY memory sharing")
@@ -733,7 +753,18 @@ def main(argv=None) -> int:
         return 0
 
     configure_environment(args)   # MUST precede the unsloth import
-    report_gpu()
+    vram_gb = report_gpu()
+
+    if args.gpu_memory_utilization is None:
+        args.gpu_memory_utilization = auto_gpu_memory_utilization(vram_gb)
+        print(f"[gpu] gpu_memory_utilization={args.gpu_memory_utilization} "
+              f"(auto for {vram_gb:.0f} GB; override with --gpu-memory-utilization)")
+
+    # Group size scales with VRAM: each extra generation is another concurrent
+    # sequence in the KV cache during sampling.
+    if vram_gb < 40 and args.num_generations > 4:
+        print(f"[gpu] WARNING: G={args.num_generations} on a {vram_gb:.0f} GB card is "
+              "likely to OOM during sampling. G=4 is the safe group size here.")
 
     precision = resolve_precision(args.precision)
     model, tokenizer = load_policy(args, precision)
