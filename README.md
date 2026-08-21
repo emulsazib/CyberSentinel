@@ -100,21 +100,33 @@ npm run build    # builds frontend/dist and installs backend deps
 npm start        # Express on :5001, serves the SPA if dist exists
 ```
 
-### Docker
+### Docker — deploy from a fresh clone
 
-The whole stack — API, Python inference service, and built SPA — runs from one image:
+The whole stack — API, Python inference service, and built SPA — runs from one image.
+**The image ships no weights and downloads nothing**: you supply a quantised GGUF and
+point `MODELS_DIR` at the folder holding it.
 
 ```bash
-docker compose up --build -d     # http://localhost:5001
-docker compose logs -f           # watch the model load
+git clone <this repo> && cd CyberSentinel
+
+MODELS_DIR=~/Downloads/grpo_cti_gguf docker compose up --build -d
+docker compose logs -f
 ```
 
-Drop a `.gguf` into `./models/` first — compose mounts it read-only and the container
-serves it with llama.cpp (~2.5 GB, ~4 GB of RAM). Without one it falls back to
-downloading the full base model, which needs a 16 GB+ host.
+Open **http://localhost:5001**. If the `.gguf` already sits in `./models/`, plain
+`docker compose up --build -d` is enough.
 
-See [`DOCKER.md`](./DOCKER.md) for the engine benchmark, GPU builds, offline images,
-and configuration.
+```bash
+curl -s localhost:5001/api/status | jq .model   # -> "engine": "gguf", model_loaded: true
+```
+
+The first build compiles llama.cpp from source (no current prebuilt linux wheels), so
+allow several minutes; rebuilds are cached. Copy [`.env.example`](./.env.example) to
+`.env` to set options persistently. Missing model? The logs print exactly what was
+searched and how to fix it.
+
+See [`DOCKER.md`](./DOCKER.md) for configuration, GPU builds, benchmarks, and
+troubleshooting.
 
 ### Local inference
 
@@ -129,9 +141,17 @@ mkdir -p models && cp ~/Downloads/cybersentinel-cti-q4_k_m.gguf models/
 npm run dev
 ```
 
-`inference_service.py` picks up the first `models/*.gguf` automatically, or set
-`CTI_GGUF_PATH` to point somewhere else. `CTI_GPU_LAYERS=-1` (default) offloads every
-layer to Metal; `0` forces CPU.
+`inference_service.py` searches `models/` **recursively**, so the training export's own
+layout works as-is:
+
+```text
+models/grpo_cti_gguf/cybersentinel-cti-q4_k_m.gguf     # found automatically
+```
+
+Set `CTI_GGUF_PATH` to point elsewhere or to choose between several policies.
+`CTI_GPU_LAYERS=-1` (default) offloads every layer to Metal; `0` forces CPU.
+`CTI_N_CTX` defaults to 4096 — llama.cpp errors rather than truncating when a pasted
+log exceeds the context.
 
 **Alternative — unquantised base + LoRA adapters.** Needs ~8 GB of RAM for a 4B policy:
 
@@ -230,19 +250,26 @@ tmux new -s cti                                    # survive a dropped connectio
 python train_runpod.py 2>&1 | tee /workspace/train.log
 ```
 
-**vLLM must match your torch's CUDA.** The default PyPI wheel targets CUDA 12.9/13.0,
-so on a `cu128` pod it fails with `ImportError: libnvrtc.so.13` — and only once Unsloth
-patches vLLM *inside* `from_pretrained`, minutes into the run. `train_runpod.py` probes
-for this up front and prints the fix, which is:
+**vLLM must match your torch's CUDA.** The default PyPI wheel is a CUDA 13 build, so on
+a `cu128` pod it fails with `ImportError: libnvrtc.so.13` — and only once Unsloth patches
+vLLM *inside* `from_pretrained`, minutes into the run. `train_runpod.py` probes for this
+up front.
+
+Don't guess the wheel name: not every release publishes a `cu128` asset. List what
+exists for your version, then install the CUDA 12 one:
 
 ```bash
 VLLM_VERSION=$(python -c "import vllm; print(vllm.__version__)")
-pip install "https://github.com/vllm-project/vllm/releases/download/v${VLLM_VERSION}/vllm-${VLLM_VERSION}+cu128-cp38-abi3-manylinux_2_28_$(uname -m).whl" \
+curl -s https://api.github.com/repos/vllm-project/vllm/releases/tags/v${VLLM_VERSION} \
+    | grep -o 'vllm-[^"]*\.whl' | sort -u
+
+# e.g. v0.23.0 ships cu129 as its only CUDA 12 build:
+pip install "https://github.com/vllm-project/vllm/releases/download/v${VLLM_VERSION}/vllm-${VLLM_VERSION}+cu129-cp38-abi3-manylinux_2_28_$(uname -m).whl" \
     --extra-index-url https://download.pytorch.org/whl/cu128
 ```
 
-If that URL 404s (the manylinux tag varies by release):
-`pip install -U uv && uv pip install --system -U vllm --torch-backend=cu128 --extra-index-url https://wheels.vllm.ai/nightly/cu128`
+Any CUDA 12.x build runs on a CUDA 12.x runtime — `libnvrtc.so.12` is shared across
+minor versions, so a cu129 wheel is fine on cu128.
 
 | Flag | Default | Purpose |
 | --- | --- | --- |

@@ -4,8 +4,9 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        # Swap for a CUDA index (e.g. .../whl/cu129) to build a GPU image.
-        TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
+        # The transformers/PEFT fallback engine adds ~2GB and is not used when
+        # serving a GGUF. Set true only if you want the unquantised path.
+        INSTALL_TORCH: ${INSTALL_TORCH:-false}
     image: cybersentinel:1.0.0
     container_name: cybersentinel
     init: true
@@ -13,31 +14,30 @@ services:
       - "${HOST_PORT:-5001}:5001"
     environment:
       PORT: 5001
-      # PREFERRED ENGINE. Drop a Q4_K_M .gguf into ./models and it is picked up
-      # automatically (~2.5 GB resident). This is the only configuration that runs
-      # well on a small host: PyTorch has no fast CPU kernel for fp16/bf16 here
-      # (measured 0.15 tok/s, ~28 min per reply) while fp32 needs ~8 GB of weights.
-      # llama.cpp's quantised kernels are built for exactly this case.
+      # Which GGUF to load, as seen INSIDE the container. Leave unset and the
+      # service searches /app/models recursively and takes the first *.gguf.
       CTI_GGUF_PATH: ${CTI_GGUF_PATH:-}
-      # 0 = pure CPU (correct inside Docker — containers cannot reach Metal on macOS).
+      # 0 = CPU. Containers cannot reach Metal on macOS; on a CUDA host build
+      # llama-cpp-python with GPU support and raise this.
       CTI_GPU_LAYERS: ${CTI_GPU_LAYERS:-0}
-      CTI_N_CTX: ${CTI_N_CTX:-2048}
-      # Only used by the transformers fallback engine. "auto" = float32 on CPU,
-      # float16 on CUDA. See the dtype benchmark table in DOCKER.md before changing.
-      CTI_DTYPE: ${CTI_DTYPE:-auto}
-      # Bridge timeout for one generation. A timed-out request keeps running in
-      # Python and blocks the queue, so raise it rather than retrying.
-      CTI_TIMEOUT_MS: ${CTI_TIMEOUT_MS:-120000}
-      HF_HOME: /data/huggingface
-      # Only needed for gated/private Hugging Face repos.
-      HF_TOKEN: ${HF_TOKEN:-}
+      CTI_N_CTX: ${CTI_N_CTX:-4096}
+      # Generation threads; unset lets llama.cpp choose. On Apple's P+E core mix,
+      # matching the performance-core count can beat using every core.
+      CTI_THREADS: ${CTI_THREADS:-0}
+      # CPU-only generation is far slower than Metal — a full reasoning response
+      # measured 289s in this container on an M1. 600s leaves real headroom;
+      # a timed-out request keeps running in Python and blocks the queue.
+      CTI_TIMEOUT_MS: ${CTI_TIMEOUT_MS:-600000}
     volumes:
-      # Put your .gguf here — read-only, no rebuild needed to swap policies.
-      - ./models:/app/models:ro
-      # Persist the base-model download used by the transformers fallback engine.
-      - hf-cache:/data/huggingface
+      # Point MODELS_DIR at the folder holding your .gguf — no need to copy the
+      # file into the repo. Searched recursively, mounted read-only.
+      #   MODELS_DIR=~/Downloads/grpo_cti_gguf docker compose up -d
+      - ${MODELS_DIR:-./models}:/app/models:ro
     restart: unless-stopped
     stop_grace_period: 30s
-
-volumes:
-  hf-cache:
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 45s
+      retries: 5

@@ -38,8 +38,14 @@ DEFAULT_GGUF_DIR = os.path.join(ROOT_DIR, "models")
 GGUF_PATH_ENV = os.environ.get("CTI_GGUF_PATH", "").strip()
 # -1 offloads every layer to the GPU (Metal on Apple Silicon); 0 forces pure CPU.
 GGUF_GPU_LAYERS = int(os.environ.get("CTI_GPU_LAYERS", "-1"))
-# Prompt (<=640) + completion (256) fit well inside this.
-GGUF_N_CTX = int(os.environ.get("CTI_N_CTX", "2048"))
+# Training capped prompts at 640 tokens, but the console invites pasting whole EDR
+# logs and llama.cpp errors rather than truncating when a prompt exceeds n_ctx.
+# 4096 is cheap KV cache at this model size and keeps a long paste answerable.
+GGUF_N_CTX = int(os.environ.get("CTI_N_CTX", "4096"))
+# Generation threads. 0/unset lets llama.cpp choose. On heterogeneous CPUs
+# (Apple's performance + efficiency cores) matching the performance-core count
+# often beats using every core, since the slow cores gate each step.
+GGUF_THREADS = int(os.environ.get("CTI_THREADS", "0"))
 
 # Exact system prompt used during GRPO policy training
 SYSTEM_PROMPT = (
@@ -68,7 +74,13 @@ g_model_source = None    # gguf file path, or the base-model id
 
 
 def resolve_gguf_path() -> Optional[str]:
-    """Return the GGUF to load, or None. CTI_GGUF_PATH wins; else first models/*.gguf."""
+    """Return the GGUF to load, or None.
+
+    CTI_GGUF_PATH wins; otherwise search models/ recursively, because the training
+    export writes into a subdirectory (models/grpo_cti_gguf/*.gguf) and requiring a
+    manual flatten is a silent-failure trap — a missed file falls through to the
+    transformers engine and starts an 8GB download instead.
+    """
     if GGUF_PATH_ENV:
         candidate = GGUF_PATH_ENV
         if not os.path.isabs(candidate):
@@ -81,8 +93,17 @@ def resolve_gguf_path() -> Optional[str]:
         sys.stderr.flush()
         return None
 
-    matches = sorted(glob.glob(os.path.join(DEFAULT_GGUF_DIR, "*.gguf")))
-    return matches[0] if matches else None
+    matches = sorted(glob.glob(os.path.join(DEFAULT_GGUF_DIR, "**", "*.gguf"), recursive=True))
+    if not matches:
+        return None
+    if len(matches) > 1:
+        # Never leave the choice implicit when several policies are present.
+        sys.stderr.write(
+            f"[CyberSentinel] {len(matches)} GGUF files under {DEFAULT_GGUF_DIR}; "
+            f"using {os.path.basename(matches[0])}. Set CTI_GGUF_PATH to pick another.\n"
+        )
+        sys.stderr.flush()
+    return matches[0]
 
 
 def extract_reasoning(text: str) -> Optional[str]:
@@ -113,12 +134,15 @@ def try_load_gguf(gguf_path: str) -> bool:
         )
         sys.stderr.flush()
 
-        model = Llama(
+        kwargs = dict(
             model_path=gguf_path,
             n_ctx=GGUF_N_CTX,
             n_gpu_layers=GGUF_GPU_LAYERS,
             verbose=False,
         )
+        if GGUF_THREADS > 0:
+            kwargs["n_threads"] = GGUF_THREADS
+        model = Llama(**kwargs)
 
         # Metal is the only GPU backend reachable here (llama-cpp-python built with
         # -DGGML_METAL=on). Everything else runs on optimised quantised CPU kernels.
@@ -360,12 +384,76 @@ def generate_cti_response(
     }
 
 
+NO_MODEL_BANNER = """
+================================================================================
+  NO MODEL AVAILABLE — the API will return errors until one is supplied.
+
+  This project does not ship or download weights. Supply a quantised GGUF:
+
+  Docker:
+      MODELS_DIR=/path/to/folder/with/your/gguf docker compose up -d
+    or set CTI_GGUF_PATH to a file inside the container.
+
+  Local (npm run dev):
+      mkdir -p models && cp /path/to/your.gguf models/
+    or: export CTI_GGUF_PATH=/absolute/path/to/your.gguf
+
+  Searched: {searched}
+{torch_note}================================================================================
+"""
+
+
+LOAD_FAILED_BANNER = """
+================================================================================
+  MODEL FOUND BUT FAILED TO LOAD — the API will return errors.
+
+  File  : {path}
+  Error : {error}
+
+  The file was located, so this is a runtime problem rather than a missing
+  model. A missing shared library (e.g. libgomp.so.1, which llama.cpp needs for
+  OpenMP) means the image or environment lacks a dependency; a truncated or
+  corrupt download means the GGUF itself is bad — re-download and compare sizes.
+================================================================================
+"""
+
+
+def describe_missing_model() -> str:
+    """Explain precisely why no engine came up, so a first run is diagnosable."""
+    import importlib.util
+
+    # Distinguish "no file anywhere" from "found it, but loading blew up" —
+    # they have completely different fixes.
+    found = resolve_gguf_path()
+    if found and g_load_error:
+        return LOAD_FAILED_BANNER.format(path=found, error=g_load_error)
+
+    searched = GGUF_PATH_ENV or f"{DEFAULT_GGUF_DIR}/**/*.gguf  (recursive)"
+
+    if importlib.util.find_spec("torch") is None:
+        torch_note = (
+            "\n  (The transformers fallback is unavailable: torch is not installed.\n"
+            "   That is expected — this image ships the GGUF engine only. Rebuild\n"
+            "   with --build-arg INSTALL_TORCH=true if you need the unquantised path.)\n"
+        )
+    else:
+        torch_note = (
+            "\n  (The transformers fallback is installed but needs to download an\n"
+            "   ~8GB base model and cannot run usably on CPU. Prefer a GGUF.)\n"
+        )
+    return NO_MODEL_BANNER.format(searched=searched, torch_note=torch_note)
+
+
 def main():
     sys.stderr.write("[CyberSentinel] Python Inference Service starting...\n")
     sys.stderr.flush()
 
     # Load model on startup
     try_load_model()
+
+    if not g_model_loaded:
+        sys.stderr.write(describe_missing_model())
+        sys.stderr.flush()
 
     # JSON-RPC loop over stdin
     for line in sys.stdin:

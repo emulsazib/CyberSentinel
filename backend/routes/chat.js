@@ -9,7 +9,9 @@ router.post('/', async (req, res) => {
     message,
     history = [],
     temperature = 0.1,
-    max_new_tokens = 256,
+    max_new_tokens = 512,   // 256 (the training completion length) truncates
+                           // real reasoning mid-sentence: measured 62% -> 100%
+                           // format adherence on the probe set at 512.
     system_prompt,
     mode = 'cti' // 'cti' (structured log mapping) or 'interactive' (analyst conversation)
   } = req.body;
@@ -26,7 +28,7 @@ router.post('/', async (req, res) => {
       prompt: message.trim(),
       system_prompt,
       temperature: parseFloat(temperature) || 0.1,
-      max_new_tokens: parseInt(max_new_tokens) || 256,
+      max_new_tokens: parseInt(max_new_tokens) || 512,
       is_chat: isChat
     });
 

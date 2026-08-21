@@ -35,7 +35,7 @@ export async function sendChatMessage({
   message,
   history = [],
   temperature = 0.1,
-  max_new_tokens = 256,
+  max_new_tokens = 512,
   system_prompt,
   mode = 'cti'
 }) {

@@ -51,7 +51,7 @@ export default function SettingsModal({
               type="range"
               className="form-range"
               min="64"
-              max="512"
+              max="1024"
               step="16"
               value={settings.max_new_tokens}
               onChange={(e) => setSettings({ ...settings, max_new_tokens: parseInt(e.target.value) })}

@@ -1,35 +1,18 @@
-# Python inference stack for backend/inference_service.py
+# CyberSentinel inference runtime.
 #
-# ---------------------------------------------------------------------------
-# RECOMMENDED for local serving: the GGUF engine only.
+# This is all you need to serve a quantised GGUF policy — the recommended and
+# default path. A 4B Q4_K_M model needs ~2.5GB; the same policy unquantised
+# through transformers needs ~8GB and has no fast CPU kernel.
 #
-#   macOS (Metal):  CMAKE_ARGS="-DGGML_METAL=on" pip install llama-cpp-python
-#   Linux/CPU:      pip install llama-cpp-python
+#   Linux / Docker:   pip install -r requirements.txt
+#   macOS (Metal):    CMAKE_ARGS="-DGGML_METAL=on" pip install -r requirements.txt
 #
-# That single package is enough to serve a quantised policy — you do NOT need
-# torch/transformers/peft below unless you want to run the unquantised model or
-# attach LoRA adapters directly. A 4B Q4_K_M GGUF needs ~2.5GB; the same policy
-# in fp16 through transformers needs ~8GB.
-#
-# Use an arm64 Python on Apple Silicon: an x86 build runs ~10x slower.
-# ---------------------------------------------------------------------------
+# Use an arm64 Python on Apple Silicon — an x86 build under Rosetta is ~10x slower.
+# There are no current prebuilt linux wheels, so this compiles llama.cpp from
+# source and needs cmake + a C++ toolchain (the Dockerfile does this in a builder
+# stage so the runtime image stays lean).
+
 llama-cpp-python>=0.3.2
 
-# ---------------------------------------------------------------------------
-# OPTIONAL — transformers + PEFT fallback engine (unquantised base + adapters).
-# Install torch from the wheel index matching your hardware *first*, so pip does
-# not pull the default CUDA build on a CPU-only host:
-#
-#   CPU:  pip install --index-url https://download.pytorch.org/whl/cpu torch==2.13.0
-#   CUDA: pip install --index-url https://download.pytorch.org/whl/cu129 torch==2.13.0
-#   macOS (MPS): pip install torch==2.13.0
-#
-# then: pip install -r requirements.txt
-# ---------------------------------------------------------------------------
-torch==2.13.0
-transformers==5.15.0
-peft==0.20.0
-accelerate==1.14.0
-safetensors==0.8.0
-huggingface-hub==1.27.0
-numpy==2.4.6
+# The optional transformers + PEFT fallback engine (unquantised base model +
+# LoRA adapters, for CUDA hosts) lives in requirements-fallback.txt.

@@ -6,186 +6,160 @@ spawns, and the built React SOC console served from the same port.
 ```text
 container :5001
 ├── node backend/server.js        API + static SPA (frontend/dist)
-│   └── python_bridge.js  ──▶ python3 backend/inference_service.py   (JSON-RPC over stdin/stdout)
-│                                ├── 1. llama.cpp on /app/models/*.gguf   ← preferred
-│                                └── 2. Qwen3-4B-Instruct-2507 + GRPO LoRA (fallback)
-├── /app/models                   your .gguf, bind-mounted read-only
-└── /data/huggingface             base-model cache (named volume `hf-cache`)
+│   └── python_bridge.js  ──▶ python3 backend/inference_service.py
+│                                └── llama.cpp on /app/models/**/*.gguf
+└── /app/models                   YOUR gguf, bind-mounted read-only
 ```
 
-**Put a GGUF in `./models/` before starting.** It is the engine that makes this
-container practical: a Q4_K_M 4B policy is ~2.5 GB and uses llama.cpp's quantised
-CPU kernels, versus ~8 GB and unusable throughput for the PyTorch fallback (see
-the benchmark below). Build one with the last cell of `malware-behavior.ipynb`.
-
-The GRPO adapters (`grpo_cti_tokenizer_model/`, `grpo_cti_lora_adapters/`) are
-baked into the image for the fallback engine. The base model is **not** — it is
-downloaded on first start and cached in the `hf-cache` volume. With a GGUF
-present, no download happens at all.
+**The image contains no weights and downloads nothing.** You bring a quantised
+GGUF; the container loads it. That keeps the image small, the build reproducible,
+and startup offline.
 
 ---
 
-## Quick start
+## Quick start (from a fresh clone)
 
 ```bash
-mkdir -p models
-cp ~/Downloads/cybersentinel-cti-q4_k_m.gguf models/
+git clone <this repo>
+cd CyberSentinel
 
+# point at the folder containing your .gguf — anywhere on disk
+MODELS_DIR=~/Downloads/grpo_cti_gguf docker compose up --build -d
+
+docker compose logs -f          # watch it load
+```
+
+Open **http://localhost:5001** — the SPA and API share that port, so there is no
+Vite proxy involved.
+
+The first build compiles llama.cpp from source (no current prebuilt linux wheels
+exist), so expect several minutes. Rebuilds are cached.
+
+If your GGUF already sits in `./models/` you can drop the variable entirely:
+
+```bash
 docker compose up --build -d
-docker compose logs -f          # watch the model load
 ```
 
-Open **http://localhost:5001** — the SPA and the API share that port, so no
-Vite proxy is involved.
+### Verify
 
 ```bash
-curl -s localhost:5001/health
 curl -s localhost:5001/api/status | jq .model
-curl -s localhost:5001/api/chat -H 'Content-Type: application/json' \
-  -d '{"message":"The malware wrote a Run key under HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run pointing to payload.exe","mode":"cti"}'
 ```
-
-`/api/status` reports which engine won:
 
 ```json
 { "engine": "gguf", "device": "cpu", "model_loaded": true,
   "gguf_path": "/app/models/cybersentinel-cti-q4_k_m.gguf" }
 ```
 
-`"engine": "gguf"` means llama.cpp loaded your quantised file (a few seconds).
-`"engine": "transformers"` means no GGUF was found and it fell back to
-downloading the full base model — check that `./models/` actually contains a
-`.gguf` if you did not intend that.
+`"engine": "gguf"` means your model loaded. If `model_loaded` is `false`, the logs
+print exactly what was searched and how to fix it.
+
+```bash
+curl -s localhost:5001/api/chat -H 'Content-Type: application/json' \
+  -d '{"message":"The malware wrote a Run key under HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run pointing to payload.exe","mode":"cti"}'
+```
 
 Stop / reset:
 
 ```bash
-docker compose down             # keeps the model cache
-docker compose down -v          # also deletes the cache (next start re-downloads)
+docker compose down
 ```
-
----
-
-## Host requirements
-
-| Resource | With a GGUF (recommended) | PyTorch fallback |
-| --- | --- | --- |
-| RAM given to Docker | **4 GB** | 16+ GB (4B fp32 weights alone are ~16 GB) |
-| Disk | ~2.3 GB image + ~2.5 GB GGUF | + ~8 GB base-model cache |
-| Network | **none** — the GGUF is local | downloads the base model on first start |
-
-The GGUF engine is what brings this back within reach of an ordinary laptop.
-The PyTorch fallback exists for GPU hosts; do not try to run it on a small
-CPU-only machine.
-
-On Docker Desktop, raise memory under **Settings → Resources → Memory**. Too
-little memory shows up as the Python child being killed and restarted every few
-seconds in `docker compose logs` (exit code 137, `OOMKilled: true`).
-
----
-
-## Use the GGUF engine — do not run PyTorch on CPU
-
-The container prefers **llama.cpp on a quantised GGUF**, and on any CPU-only host
-that is the only sane choice.
-
-The PyTorch rows below were measured in this container on an Apple Silicon host
-(8 CPU threads, 38-token prompt) against the earlier 1.5B policy. **The llama.cpp
-row is not yet measured here** — benchmark it once your GGUF exists and replace
-the estimate:
-
-| Engine / `CTI_DTYPE` | Weights (4B) | Per token | 256-token reply | Why |
-| --- | --- | --- | --- | --- |
-| **llama.cpp Q4_K_M** | **~2.5 GB** | *not yet measured* | *not yet measured* | purpose-built quantised CPU kernels; expected to be orders of magnitude faster than the rows below |
-| PyTorch `float32` | ~16 GB | — | — | oneDNN fp32 path is fine, but the weights do not fit |
-| PyTorch `float16` | ~8 GB | 6.5 s* | ~28 min* | no fp16 CPU kernel; every matmul round-trips through fp32 |
-| PyTorch `bfloat16` | ~8 GB | slower still* | — | `mkldnn_matmul bf16 path needs a cpu with bf16 support` → BLAS fallback |
-
-\* measured on the 1.5B policy; a 4B model is proportionally worse.
-
-The halved-memory PyTorch dtypes look attractive and are a trap — they fit more
-easily but are one to two orders of magnitude slower, and under memory pressure
-fp32 degraded to 122 s per token. Quantising properly (GGUF) targets both
-problems at once: less memory *and* faster kernels.
-
-Put your `.gguf` in `./models/` and compose mounts it read-only at `/app/models`,
-where `inference_service.py` finds it automatically. Nothing is baked into the
-image, so swapping policies needs no rebuild.
-
-**On macOS specifically:** containers run in a Linux VM with no Metal
-passthrough, so `CTI_GPU_LAYERS=0` (the compose default) is correct here — the
-GGUF runs on CPU. Natively via `npm run dev` the same file uses Metal instead;
-install `llama-cpp-python` with `CMAKE_ARGS="-DGGML_METAL=on"` and leave
-`CTI_GPU_LAYERS=-1`.
 
 ---
 
 ## Configuration
 
-Compose reads these from the environment or a `.env` file next to
-`docker-compose.yml`:
+Compose reads these from the environment or a `.env` file beside
+`docker-compose.yml` (copy `.env.example` to start):
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `HOST_PORT` | `5001` | Host port mapped to the container's 5001 |
-| `CTI_GGUF_PATH` | – | Explicit GGUF file. Unset = first `*.gguf` in `/app/models` |
-| `CTI_GPU_LAYERS` | `0` in Docker, `-1` native | Layers offloaded to GPU. `-1` = all (Metal); `0` = pure CPU |
-| `CTI_N_CTX` | `2048` | llama.cpp context window (prompt 640 + completion 256 fits easily) |
-| `CTI_DTYPE` | `auto` | **Fallback engine only.** float32 on CPU, float16 on CUDA |
-| `CTI_TIMEOUT_MS` | `120000` | Bridge timeout for one generation. Raise on slow CPU hosts |
-| `HF_TOKEN` | – | Only needed for gated/private Hugging Face repos |
-| `TORCH_INDEX_URL` | CPU wheel index | Build-time; switch for a CUDA build |
+| `MODELS_DIR` | `./models` | **Host folder holding your `.gguf`.** Mounted read-only at `/app/models` |
+| `CTI_GGUF_PATH` | – | Exact file *inside* the container. Unset = first `*.gguf` found recursively |
+| `HOST_PORT` | `5001` | Host port |
+| `CTI_GPU_LAYERS` | `0` | Layers on GPU. `0` = CPU, correct for Docker on macOS (no Metal passthrough) |
+| `CTI_N_CTX` | `4096` | Context window. llama.cpp errors rather than truncating an over-long prompt |
+| `CTI_THREADS` | auto | Generation threads. Benchmark before overriding — see Performance |
+| `CTI_TIMEOUT_MS` | `600000` | Bridge timeout for one generation. CPU responses can take minutes |
+| `INSTALL_TORCH` | `false` | Build-time. `true` adds the ~2GB transformers/PEFT fallback engine |
 
-A timed-out request is **not** cancelled — Python keeps generating and the next
-request queues behind it, so a too-short timeout turns into a stuck queue.
-Restart the container to clear a backlog.
+Several `.gguf` files under `MODELS_DIR`? The first alphabetically wins and the
+choice is logged; set `CTI_GGUF_PATH` to be explicit.
 
-Example `.env`:
+---
 
-```dotenv
-HOST_PORT=8080
-CTI_TIMEOUT_MS=300000
-```
+## Host requirements
+
+| Resource | Needed |
+| --- | --- |
+| RAM for Docker | **4 GB** (a 4B Q4_K_M model is ~2.5 GB resident) |
+| Disk | ~700 MB image + your GGUF |
+| Network | build only — running is fully offline |
+
+---
+
+## Performance
+
+All measured on an Apple M1 (8 cores), 4B Q4_K_M policy, full
+`<reasoning>`+`<answer>` responses:
+
+| Engine | Weights | Per response | Why |
+| --- | --- | --- | --- |
+| **llama.cpp, Metal** (native `npm run dev`) | ~2.5 GB | **~13 s** (16.3 tok/s) | quantised kernels + GPU offload |
+| **llama.cpp, CPU (this container)** | ~2.5 GB | **~289 s** (~1.7 tok/s) | Docker on macOS has no Metal passthrough |
+| PyTorch `float16` CPU | ~8 GB | ~28 min* | no fp16 CPU kernel; every matmul round-trips through fp32 |
+| PyTorch `float32` CPU | ~16 GB | — | weights do not fit on a small host |
+
+\* measured in-container on the earlier 1.5B policy; a 4B model is proportionally worse.
+
+**Read the second row before deploying on a Mac.** A containerised response takes
+about five minutes, roughly 20x slower than the same model natively on Metal. It
+works and returns correct answers — the `CTI_TIMEOUT_MS` default of 600 s exists
+for exactly this — but it is not a comfortable interactive experience.
+
+- **On a Mac:** use `npm run dev` for day-to-day use. Docker here is for testing
+  that the deployment itself works.
+- **On a Linux server:** no VM layer, so expect meaningfully better than the 289 s
+  above, though still far short of GPU speed.
+- **For GPU:** build llama-cpp-python with CUDA and set `CTI_GPU_LAYERS=-1` (see
+  Variants below).
+
+Thread count is auto-selected. `CTI_THREADS` can override it, but measured here 4
+threads was *slower* than the default 8 (358 s vs 289 s) — benchmark before
+changing it rather than assuming fewer/more is better.
+
+**One model instance per machine.** Two resident copies (a benchmark script
+alongside the running server, say) can exceed available memory on an 8 GB host and
+fail with `RuntimeError: llama_decode returned -3`.
 
 ---
 
 ## Variants
 
-**Offline / immutable image** — bake the base model in at build time (adds ~3 GB
-to the image, removes the runtime download):
-
-```bash
-docker compose build --build-arg PREFETCH_BASE_MODEL=true
-```
-
-**NVIDIA GPU** — build against a CUDA wheel index and hand the container a GPU.
-Check <https://pytorch.org/get-started/locally/> for the tag matching your driver:
-
-```bash
-TORCH_INDEX_URL=https://download.pytorch.org/whl/cu129 docker compose build
-```
-
-then add to the service in `docker-compose.yml`:
+**NVIDIA GPU** — build llama-cpp-python with CUDA and give the container a GPU.
+Edit the `llama-builder` stage to pass `CMAKE_ARGS="-DGGML_CUDA=on"`, then:
 
 ```yaml
     gpus: all
     environment:
-      CTI_DTYPE: float16
+      CTI_GPU_LAYERS: -1     # offload every layer
 ```
 
-The service auto-selects CUDA when `torch.cuda.is_available()`.
+**Unquantised fallback engine** (base model + LoRA adapters, CUDA hosts):
 
-> Apple Silicon MPS is **not** reachable from Docker — containers on macOS run in
-> a Linux VM with no Metal passthrough. On a Mac the container is CPU-only; use
-> the native `npm run dev` path if you want MPS acceleration.
+```bash
+INSTALL_TORCH=true docker compose build
+```
+
+Adds ~2GB and downloads an ~8GB base model at first run. Not recommended on CPU.
 
 **Plain docker, no compose:**
 
 ```bash
 docker build -t cybersentinel:1.0.0 .
 docker run -d --name cybersentinel -p 5001:5001 \
-  -e CTI_DTYPE=bfloat16 \
-  -v cybersentinel-hf:/data/huggingface \
+  -v ~/Downloads/grpo_cti_gguf:/app/models:ro \
   cybersentinel:1.0.0
 ```
 
@@ -195,17 +169,14 @@ docker run -d --name cybersentinel -p 5001:5001 \
 
 | Symptom | Cause / fix |
 | --- | --- |
-| `engine: "transformers"` when you expected `"gguf"` | No `.gguf` found. Check `./models/` is non-empty and mounted, or set `CTI_GGUF_PATH` |
-| `Warning: GGUF load exception (No module named 'llama_cpp')` | `llama-cpp-python` missing from the image — rebuild after the `requirements.txt` change |
-| `Python process exited with code 137`, repeating | Out of memory — almost always the PyTorch fallback engine. Supply a GGUF instead of raising the memory limit |
-| `bind: address already in use` on `up` | Something already owns the port (often a native `node backend/server.js`). Start with `HOST_PORT=5002 docker compose up -d` |
-| `no space left on device` while exporting layers | Docker's VM disk is full — raise the disk limit under Settings → Resources, or `docker builder prune` |
-| `/api/status` stuck at `model_loaded: false` | Still downloading; follow `docker compose logs -f` |
-| `Inference request timeout (120s)` | Generation is slower than the timeout. Raise `CTI_TIMEOUT_MS` **and** restart to clear the queued backlog |
-| Container exits with code 143, or Docker Desktop quits | SIGTERM from the host — Docker's VM is starved. Lower the VM's memory or move to a bigger host |
+| `NO MODEL AVAILABLE` banner in the logs | No `.gguf` found. Check `MODELS_DIR` points at the folder *containing* the file, and that the file ends in `.gguf` |
+| `model_loaded: false` | Same as above — the logs list exactly what path was searched |
+| `bind: address already in use` | Something owns the port (often a native `node backend/server.js`). Use `HOST_PORT=5002` |
+| `Inference request timeout` | CPU generation is slower than the timeout; raise `CTI_TIMEOUT_MS` **and** restart to clear the queued backlog |
+| `llama_decode returned -3` | Out of memory, often two model instances. Give Docker more RAM or stop the other one |
 | Requests hang after one timeout | Backlogged Python queue; restart the container |
-| Build fails resolving `torch==2.13.0` | That version is missing from the chosen wheel index — set `--build-arg TORCH_VERSION=<available>` |
-| SPA loads but `/api/*` 404s | `frontend/dist` missing from the image — rebuild without `--target frontend` |
+| `no space left on device` while building | Docker's VM disk is full — raise the limit under Settings → Resources, or `docker builder prune` |
+| Build fails compiling llama.cpp | Ensure Docker has ≥4 GB RAM; the compile is memory-hungry |
 
-Logs for the Python side are prefixed `[Python]` / `[CyberSentinel]`; the bridge
-logs as `[Bridge]`.
+Python-side logs are prefixed `[Python]` / `[CyberSentinel]`; the bridge logs as
+`[Bridge]`.

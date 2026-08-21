@@ -17,7 +17,7 @@ router.post('/', async (req, res) => {
     const result = await bridge.generate({
       prompt: snippet.trim(),
       temperature: 0.1,
-      max_new_tokens: 300,
+      max_new_tokens: 512,
       is_chat: false
     });
 

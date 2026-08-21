@@ -431,19 +431,23 @@ vLLM was built against a different CUDA than your PyTorch.
   torch CUDA : {torch_cuda}   (torch {torch_version})
   failure    : {error}
 
-vLLM's default PyPI wheel targets CUDA 12.9/13.0. If torch on this pod is cu128,
-that wheel wants libnvrtc.so.13 / libcudart.so.13, which the CUDA 12 runtime does
-not provide. Install the vLLM build matching your torch:
+vLLM's default PyPI wheel is a CUDA 13 build; it wants libnvrtc.so.13 / libcudart.so.13,
+which a CUDA 12 runtime does not provide. You need a cu12x build.
 
+Do NOT guess the wheel name — not every release publishes a cu128 asset (v0.23.0, for
+example, ships cu129 as its only CUDA 12 build). List what exists, then install it:
+
+  # 1. what CUDA builds exist for your version?
   VLLM_VERSION=$(python -c "import vllm; print(vllm.__version__)")
-  pip install "https://github.com/vllm-project/vllm/releases/download/v${{VLLM_VERSION}}/vllm-${{VLLM_VERSION}}+cu{cuda_tag}-cp38-abi3-manylinux_2_28_$(uname -m).whl" \\
+  curl -s https://api.github.com/repos/vllm-project/vllm/releases/tags/v${{VLLM_VERSION}} \\
+      | grep -o 'vllm-[^"]*\\.whl' | sort -u
+
+  # 2. install the cu12x wheel for your arch, e.g. for 0.23.0 on x86_64:
+  pip install "https://github.com/vllm-project/vllm/releases/download/v${{VLLM_VERSION}}/vllm-${{VLLM_VERSION}}+cu129-cp38-abi3-manylinux_2_28_$(uname -m).whl" \\
       --extra-index-url https://download.pytorch.org/whl/cu{cuda_tag}
 
-If that URL 404s (the manylinux tag varies between releases):
-
-  pip install -U uv
-  uv pip install --system -U vllm --torch-backend=cu{cuda_tag} \\
-      --extra-index-url https://wheels.vllm.ai/nightly/cu{cuda_tag}
+Any CUDA 12.x build works on a CUDA 12.x runtime — the .so.12 SONAME is shared across
+minor versions, so a cu129 wheel is fine on cu128. Only the .so.13 build is not.
 
 Verify afterwards:  python -c "import vllm; print(vllm.__version__)"
 """

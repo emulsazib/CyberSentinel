@@ -1,0 +1,25 @@
+# OPTIONAL — the transformers + PEFT fallback engine.
+#
+# Only needed to run the UNQUANTISED base model plus LoRA adapters, which is
+# worth doing on a CUDA host and is a bad idea on CPU (PyTorch has no fast CPU
+# kernel for fp16/bf16: measured 0.15 tok/s versus 16.3 tok/s for the GGUF).
+#
+# For serving a GGUF you do NOT need any of this. Docker skips it unless you
+# build with --build-arg INSTALL_TORCH=true.
+#
+# Install torch from the wheel index matching your hardware FIRST, so pip does
+# not pull the default CUDA build onto a CPU-only host:
+#
+#   CPU:   pip install --index-url https://download.pytorch.org/whl/cpu torch==2.13.0
+#   CUDA:  pip install --index-url https://download.pytorch.org/whl/cu129 torch==2.13.0
+#   macOS: pip install torch==2.13.0
+#
+# then: pip install -r requirements-fallback.txt
+
+torch==2.13.0
+transformers==5.15.0
+peft==0.20.0
+accelerate==1.14.0
+safetensors==0.8.0
+huggingface-hub==1.27.0
+numpy==2.4.6
